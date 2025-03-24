@@ -49,12 +49,15 @@ public:
     
     // GCObject interface
     Type type() const override { return Type::UserData; }
-    void mark() override;
+    void mark() override { 
+        GCObject::mark(); 
+        if (m_metatable) m_metatable->mark();
+    }
     
 private:
-    std::shared_ptr<void> m_data;          // Type-erased pointer to the actual data
-    std::type_index m_typeInfo;            // Type information for runtime type checking
-    std::shared_ptr<Table> m_metatable;    // Optional metatable
+    std::shared_ptr<void> m_data;       // Type-erased data pointer
+    std::type_index m_typeInfo;         // Type information for runtime checking
+    std::shared_ptr<Table> m_metatable; // Optional metatable for this userdata
 };
 
 } // namespace LuaCore

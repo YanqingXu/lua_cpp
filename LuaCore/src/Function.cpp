@@ -1,21 +1,21 @@
-#include "LuaCore/Function.h"
-#include "LuaCore/State.h"
+#include "Function.h"
+#include "State.h"
 
 namespace LuaCore {
 
 // Prototype implementation
-Prototype::Prototype(const std::string& name) : m_name(name) {
+Prototype::Prototype(const Str& name) : m_name(name) {
 }
 
-int Prototype::getLineNumber(int pc) const {
-    if (pc < 0 || pc >= static_cast<int>(m_lineNumbers.size())) {
+i32 Prototype::getLineNumber(i32 pc) const {
+    if (pc < 0 || pc >= static_cast<i32>(m_lineNumbers.size())) {
         return -1;
     }
     return m_lineNumbers[pc];
 }
 
-void Prototype::setLineNumber(int pc, int line) {
-    if (pc >= static_cast<int>(m_lineNumbers.size())) {
+void Prototype::setLineNumber(i32 pc, i32 line) {
+    if (pc >= static_cast<i32>(m_lineNumbers.size())) {
         m_lineNumbers.resize(pc + 1, 0);
     }
     m_lineNumbers[pc] = line;
@@ -32,15 +32,15 @@ void Prototype::setLineNumber(int pc, int line) {
 }
 
 // Closure implementation
-Closure::Closure(std::shared_ptr<Prototype> proto) 
+Closure::Closure(Ptr<Prototype> proto) 
     : m_prototype(proto), m_cFunction(nullptr) {
 }
 
-Closure::Closure(std::function<int(State*)> func)
+Closure::Closure(std::function<i32(State*)> func)
     : m_prototype(nullptr), m_cFunction(func) {
 }
 
-int Closure::call(State* state, int nargs, int nresults) {
+i32 Closure::call(State* state, i32 nargs, i32 nresults) {
     if (isCFunction()) {
         // Call C++ function directly
         return m_cFunction(state);

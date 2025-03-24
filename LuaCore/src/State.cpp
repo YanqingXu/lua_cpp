@@ -1,19 +1,19 @@
-#include "LuaCore/State.h"
-#include "LuaCore/Function.h"
-#include "LuaCore/UserData.h"
+#include "State.h"
+#include "Function.h"
+#include "UserData.h"
 #include <algorithm>
 
 namespace LuaCore {
 
 // Static method to create a new state
-std::shared_ptr<State> State::create() {
-    auto state = std::shared_ptr<State>(new State());
+Ptr<State> State::create() {
+    auto state = make_ptr<State>();
     state->initialize();
     return state;
 }
 
 // Constructor
-State::State() {
+State::State() : m_gc(this) {
     // Reserve space for the stack to avoid frequent reallocations
     m_stack.reserve(16);
 }
@@ -29,8 +29,8 @@ State::~State() {
 // Initialize the state
 void State::initialize() {
     // Create global and registry tables
-    m_globals = std::make_shared<Table>();
-    m_registry = std::make_shared<Table>();
+    m_globals = make_ptr<Table>();
+    m_registry = make_ptr<Table>();
 }
 
 // Stack operations
@@ -195,7 +195,7 @@ double State::toNumber(int index) const {
     throw LuaException("value is not a number");
 }
 
-std::string State::toString(int index) const {
+Str State::toString(int index) const {
     if (!isValidIndex(index)) {
         throw LuaException("invalid stack index");
     }
@@ -207,7 +207,7 @@ std::string State::toString(int index) const {
         return value.asString();
     }
     
-    throw LuaException("value is not a string");
+    return value.toString();
 }
 
 std::shared_ptr<Table> State::toTable(int index) const {
@@ -256,12 +256,12 @@ std::shared_ptr<UserData> State::toUserData(int index) const {
 }
 
 // Global table access
-void State::setGlobal(const std::string& name, const Value& value) {
-    m_globals->set(Value(name), value);
+void State::setGlobal(const Str& name, const Value& value) {
+    m_globals->set(name, value);
 }
 
-Value State::getGlobal(const std::string& name) const {
-    return m_globals->get(Value(name));
+Value State::getGlobal(const Str& name) const {
+    return m_globals->get(name);
 }
 
 // Function calls

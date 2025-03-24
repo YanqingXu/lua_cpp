@@ -1,7 +1,8 @@
-#include "LuaCore/Value.h"
-#include "LuaCore/Table.h"
-#include "LuaCore/Function.h"
-#include "LuaCore/UserData.h"
+#include "Value.h"
+#include "Table.h"
+#include "Function.h"
+#include "UserData.h"
+#include "types.h"
 #include <sstream>
 #include <iomanip>
 
@@ -20,29 +21,29 @@ Value::Type Value::type() const {
 
 // Advanced type checking for GCObject types
 bool Value::isTable() const {
-    if (!std::holds_alternative<std::shared_ptr<GCObject>>(m_value)) {
+    if (!std::holds_alternative<Ptr<GCObject>>(m_value)) {
         return false;
     }
     
-    auto obj = std::get<std::shared_ptr<GCObject>>(m_value);
+    auto obj = std::get<Ptr<GCObject>>(m_value);
     return obj && obj->type() == GCObject::Type::Table;
 }
 
 bool Value::isFunction() const {
-    if (!std::holds_alternative<std::shared_ptr<GCObject>>(m_value)) {
+    if (!std::holds_alternative<Ptr<GCObject>>(m_value)) {
         return false;
     }
     
-    auto obj = std::get<std::shared_ptr<GCObject>>(m_value);
+    auto obj = std::get<Ptr<GCObject>>(m_value);
     return obj && obj->type() == GCObject::Type::Closure;
 }
 
 bool Value::isUserData() const {
-    if (!std::holds_alternative<std::shared_ptr<GCObject>>(m_value)) {
+    if (!std::holds_alternative<Ptr<GCObject>>(m_value)) {
         return false;
     }
     
-    auto obj = std::get<std::shared_ptr<GCObject>>(m_value);
+    auto obj = std::get<Ptr<GCObject>>(m_value);
     return obj && obj->type() == GCObject::Type::UserData;
 }
 
@@ -61,37 +62,37 @@ double Value::asNumber() const {
     return std::get<double>(m_value);
 }
 
-std::string Value::asString() const {
+Str Value::asString() const {
     if (!isString()) {
         throw std::runtime_error("Value is not a string");
     }
-    return std::get<std::string>(m_value);
+    return std::get<Str>(m_value);
 }
 
-std::shared_ptr<Table> Value::asTable() const {
+Ptr<Table> Value::asTable() const {
     if (!isTable()) {
         throw std::runtime_error("Value is not a table");
     }
     return std::static_pointer_cast<Table>(
-        std::get<std::shared_ptr<GCObject>>(m_value)
+        std::get<Ptr<GCObject>>(m_value)
     );
 }
 
-std::shared_ptr<Function> Value::asFunction() const {
+Ptr<Function> Value::asFunction() const {
     if (!isFunction()) {
         throw std::runtime_error("Value is not a function");
     }
     return std::static_pointer_cast<Function>(
-        std::get<std::shared_ptr<GCObject>>(m_value)
+        std::get<Ptr<GCObject>>(m_value)
     );
 }
 
-std::shared_ptr<UserData> Value::asUserData() const {
+Ptr<UserData> Value::asUserData() const {
     if (!isUserData()) {
         throw std::runtime_error("Value is not a userdata");
     }
     return std::static_pointer_cast<UserData>(
-        std::get<std::shared_ptr<GCObject>>(m_value)
+        std::get<Ptr<GCObject>>(m_value)
     );
 }
 
@@ -116,10 +117,10 @@ bool Value::operator==(const Value& other) const {
         case Type::Function:
         case Type::UserData:
             // For reference types, compare by identity (pointer equality)
-            if (std::holds_alternative<std::shared_ptr<GCObject>>(m_value) &&
-                std::holds_alternative<std::shared_ptr<GCObject>>(other.m_value)) {
-                return std::get<std::shared_ptr<GCObject>>(m_value) ==
-                       std::get<std::shared_ptr<GCObject>>(other.m_value);
+            if (std::holds_alternative<Ptr<GCObject>>(m_value) &&
+                std::holds_alternative<Ptr<GCObject>>(other.m_value)) {
+                return std::get<Ptr<GCObject>>(m_value) ==
+                       std::get<Ptr<GCObject>>(other.m_value);
             }
             return false;
         default:
@@ -128,9 +129,10 @@ bool Value::operator==(const Value& other) const {
 }
 
 // Conversion to string representation (for debugging/printing)
-std::string Value::toString() const {
+Str Value::toString() const {
     std::ostringstream oss;
-    
+	Str str;
+
     switch (type()) {
         case Type::Nil:
             oss << "nil";
@@ -141,14 +143,14 @@ std::string Value::toString() const {
         case Type::Number:
             oss << std::fixed << std::setprecision(14) << asNumber();
             // Remove trailing zeros and decimal point if it's an integer
-            std::string str = oss.str();
-            if (str.find('.') != std::string::npos) {
-                str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+            str = oss.str();
+            if (str.find('.') != Str::npos) {
+                str.erase(str.find_last_not_of('0') + 1, Str::npos);
                 if (str.back() == '.') {
                     str.pop_back();
                 }
             }
-            return str;
+            break;
         case Type::String:
             oss << "\"" << asString() << "\"";
             break;
@@ -162,8 +164,12 @@ std::string Value::toString() const {
             oss << "userdata: " << std::hex << asUserData().get();
             break;
     }
-    
-    return oss.str();
+
+	if (str.empty()) {
+		str = oss.str();
+	}
+
+    return str;
 }
 
 } // namespace LuaCore

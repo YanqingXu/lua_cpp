@@ -1,4 +1,6 @@
-#include "LuaCore/Table.h"
+#include "Table.h"
+#include "Function.h"
+#include "UserData.h"
 #include <algorithm>
 #include <cmath>
 
@@ -164,13 +166,13 @@ void Table::mark() {
     GCObject::mark();
     
     // Mark all values in the array part
-    for (auto& value : m_array) {
+    for (Value& value : m_array) {
         // Mark tables, functions, and userdata
         if (value.isTable()) {
             value.asTable()->mark();
         }
         else if (value.isFunction()) {
-            value.asFunction()->mark();
+			value.asFunction()->mark();
         }
         else if (value.isUserData()) {
             value.asUserData()->mark();

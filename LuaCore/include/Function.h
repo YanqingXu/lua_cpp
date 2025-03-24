@@ -2,10 +2,8 @@
 
 #include "GCObject.h"
 #include "Value.h"
-#include <vector>
-#include <string>
+#include "types.h"
 #include <functional>
-#include <memory>
 
 namespace LuaCore {
 
@@ -20,32 +18,32 @@ class State;
  */
 class Prototype {
 public:
-    Prototype(const std::string& name = "");
+    Prototype(const Str& name = "");
     
     // Basic properties
-    const std::string& name() const { return m_name; }
-    void setName(const std::string& name) { m_name = name; }
+    const Str& name() const { return m_name; }
+    void setName(const Str& name) { m_name = name; }
     
     // Debug information
-    int getLineNumber(int pc) const;
-    void setLineNumber(int pc, int line);
+    i32 getLineNumber(i32 pc) const;
+    void setLineNumber(i32 pc, i32 line);
     
     // Source code information
-    const std::string& getSource() const { return m_source; }
-    void setSource(const std::string& source) { m_source = source; }
+    const Str& getSource() const { return m_source; }
+    void setSource(const Str& source) { m_source = source; }
     
 private:
-    std::string m_name;                // Function name
-    std::string m_source;              // Source code
-    std::vector<int> m_lineNumbers;    // Line number information
-    int m_firstLine = 0;               // First line in source
-    int m_lastLine = 0;                // Last line in source
+    Str m_name;                // Function name
+    Str m_source;              // Source code
+    Vec<i32> m_lineNumbers;    // Line number information
+    i32 m_firstLine = 0;               // First line in source
+    i32 m_lastLine = 0;                // Last line in source
 };
 
 /**
  * @brief Base class for all callable function objects
  * 
- * The Function class is the base for both Lua functions and C++ functions that can
+ * The Function class is the base for all function objects that can
  * be called from Lua code. It provides the common interface for function calls.
  */
 class Function : public GCObject {
@@ -53,10 +51,11 @@ public:
     virtual ~Function() = default;
     
     // Function call interface (to be implemented by derived classes)
-    virtual int call(State* state, int nargs, int nresults) = 0;
+    virtual i32 call(State* state, i32 nargs, i32 nresults) = 0;
     
     // GCObject interface
     Type type() const override { return Type::Closure; }
+    void mark() override { GCObject::mark(); }
     
 protected:
     Function() = default;
@@ -71,27 +70,27 @@ protected:
 class Closure : public Function {
 public:
     // Create a Lua function closure
-    explicit Closure(std::shared_ptr<Prototype> proto);
+    explicit Closure(Ptr<Prototype> proto);
     
     // Create a C++ function closure
-    explicit Closure(std::function<int(State*)> func);
+    explicit Closure(std::function<i32(State*)> func);
     
     // Function call implementation
-    int call(State* state, int nargs, int nresults) override;
+    i32 call(State* state, i32 nargs, i32 nresults) override;
     
     // GCObject interface
     void mark() override;
     
     // Access to prototype
-    std::shared_ptr<Prototype> prototype() const { return m_prototype; }
+    Ptr<Prototype> prototype() const { return m_prototype; }
     
     // Check if this is a C++ function
     bool isCFunction() const { return static_cast<bool>(m_cFunction); }
     
 private:
-    std::shared_ptr<Prototype> m_prototype;      // Function prototype (for Lua functions)
-    std::function<int(State*)> m_cFunction;      // C++ function (for C++ functions)
-    std::vector<std::shared_ptr<Value>> m_upvalues; // Upvalues (captured variables)
+    Ptr<Prototype> m_prototype;      // Function prototype (for Lua functions)
+    std::function<i32(State*)> m_cFunction;      // C++ function (for C++ functions)
+    Vec<Ptr<Value>> m_upvalues; // Upvalues (captured variables)
 };
 
 } // namespace LuaCore

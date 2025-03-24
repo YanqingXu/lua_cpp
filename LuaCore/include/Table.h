@@ -2,8 +2,7 @@
 
 #include "GCObject.h"
 #include "Value.h"
-#include <unordered_map>
-#include <vector>
+#include "types.h"
 #include <memory>
 
 namespace LuaCore {
@@ -27,29 +26,29 @@ public:
     void set(const Value& key, const Value& value);
     
     // Get the length of the array part
-    std::size_t length() const;
+    usize length() const;
     
     // Check if a key exists in the table
     bool contains(const Value& key) const;
     
     // Get raw array access for optimization
-    const std::vector<Value>& getArrayPart() const { return m_array; }
+    const Vec<Value>& getArrayPart() const { return m_array; }
     
     // GCObject interface implementation
     Type type() const override { return Type::Table; }
     void mark() override;
     
     // Iterator support
-    using Iterator = std::unordered_map<Value, Value>::const_iterator;
+    using Iterator = HashMap<Value, Value>::const_iterator;
     Iterator begin() const { return m_hash.begin(); }
     Iterator end() const { return m_hash.end(); }
     
 private:
     // Array part for sequential indices (1-based in Lua, 0-based in implementation)
-    std::vector<Value> m_array;
+    Vec<Value> m_array;
     
     // Hash part for non-sequential keys
-    std::unordered_map<Value, Value> m_hash;
+    HashMap<Value, Value> m_hash;
     
     // Utility to determine if a key should be in the array part
     bool isArrayIndex(const Value& key) const;

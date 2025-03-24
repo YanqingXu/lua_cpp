@@ -2,8 +2,8 @@
 
 #include "Value.h"
 #include "Table.h"
-#include <vector>
-#include <memory>
+#include "GarbageCollector.h"
+#include "types.h"
 #include <functional>
 #include <stdexcept>
 
@@ -14,7 +14,7 @@ namespace LuaCore {
  */
 class LuaException : public std::runtime_error {
 public:
-    explicit LuaException(const std::string& message) : std::runtime_error(message) {}
+    explicit LuaException(const Str& message) : std::runtime_error(message) {}
 };
 
 /**
@@ -53,21 +53,34 @@ public:
     // Value retrieval from stack
     bool toBoolean(int index) const;
     double toNumber(int index) const;
-    std::string toString(int index) const;
-    std::shared_ptr<Table> toTable(int index) const;
-    std::shared_ptr<Function> toFunction(int index) const;
-    std::shared_ptr<UserData> toUserData(int index) const;
+    Str toString(int index) const;
+    Ptr<Table> toTable(int index) const;
+    Ptr<Function> toFunction(int index) const;
+    Ptr<UserData> toUserData(int index) const;
     
     // Global table access
-    std::shared_ptr<Table> getGlobals() const { return m_globals; }
-    void setGlobal(const std::string& name, const Value& value);
-    Value getGlobal(const std::string& name) const;
+    Ptr<Table> getGlobals() const { return m_globals; }
+    void setGlobal(const Str& name, const Value& value);
+    Value getGlobal(const Str& name) const;
     
     // Function calls
     int call(int nargs, int nresults);
     
     // Registry access (for internal use)
-    std::shared_ptr<Table> getRegistry() const { return m_registry; }
+    Ptr<Table> getRegistry() const { return m_registry; }
+    
+    // Memory management and garbage collection
+    GarbageCollector& getGC() { return m_gc; }
+    void collectGarbage() { m_gc.collectGarbage(); }
+    void collectGarbageIncremental() { m_gc.collectGarbageIncremental(); }
+    
+    // Create GCObject and register with GC
+    template<typename T, typename... Args>
+    Ptr<T> createGCObject(Args&&... args) {
+        auto obj = make_ptr<T>(std::forward<Args>(args)...);
+        m_gc.registerObject(obj);
+        return obj;
+    }
     
 private:
     // Private constructor (use create() instead)
@@ -83,13 +96,16 @@ private:
     int absoluteIndex(int index) const;
     
     // Stack of values
-    std::vector<Value> m_stack;
+    Vec<Value> m_stack;
     
-    // Global environment table
-    std::shared_ptr<Table> m_globals;
+    // Global variables table
+    Ptr<Table> m_globals;
     
     // Registry table (for internal use)
-    std::shared_ptr<Table> m_registry;
+    Ptr<Table> m_registry;
+    
+    // Garbage collector
+    GarbageCollector m_gc;
 };
 
 } // namespace LuaCore

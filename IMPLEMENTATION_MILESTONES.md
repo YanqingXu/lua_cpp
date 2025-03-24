@@ -10,7 +10,7 @@ The complete reimplementation project is expected to take approximately 20-30 we
 |-----------|-------------|-------------------|--------|
 | 1 | Core Infrastructure | 2-3 weeks | In Progress |
 | 2 | Object System | 2-3 weeks | Not Started |
-| 3 | Parser and Compiler | 4-6 weeks | Not Started |
+| 3 | Parser and Compiler | 4-6 weeks | In Progress |
 | 4 | Virtual Machine | 4-6 weeks | Not Started |
 | 5 | Standard Libraries | 2-3 weeks | Not Started |
 | 6 | Garbage Collection | 2-3 weeks | Not Started |

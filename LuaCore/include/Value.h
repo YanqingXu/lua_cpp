@@ -1,5 +1,6 @@
 #pragma once
 
+#include "types.h"
 #include <string>
 #include <variant>
 #include <memory>
@@ -40,14 +41,14 @@ public:
     // Constructors for different types
     explicit Value(std::nullptr_t) : m_value(nullptr) {}
     explicit Value(bool value) : m_value(value) {}
-    explicit Value(double value) : m_value(value) {}
-    explicit Value(const std::string& value) : m_value(value) {}
+    explicit Value(f64 value) : m_value(value) {}
+    explicit Value(const Str& value) : m_value(value) {}
     
     // Type checking methods
     bool isNil() const { return std::holds_alternative<std::nullptr_t>(m_value); }
     bool isBoolean() const { return std::holds_alternative<bool>(m_value); }
-    bool isNumber() const { return std::holds_alternative<double>(m_value); }
-    bool isString() const { return std::holds_alternative<std::string>(m_value); }
+    bool isNumber() const { return std::holds_alternative<f64>(m_value); }
+    bool isString() const { return std::holds_alternative<Str>(m_value); }
     bool isTable() const;
     bool isFunction() const;
     bool isUserData() const;
@@ -57,27 +58,27 @@ public:
     
     // Value getters with type checking
     bool asBoolean() const;
-    double asNumber() const;
-    std::string asString() const;
-    std::shared_ptr<Table> asTable() const;
-    std::shared_ptr<Function> asFunction() const;
-    std::shared_ptr<UserData> asUserData() const;
+    f64 asNumber() const;
+    Str asString() const;
+    Ptr<Table> asTable() const;
+    Ptr<Function> asFunction() const;
+    Ptr<UserData> asUserData() const;
 
     // Comparison operators
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
     
     // Conversion to string representation (for debugging/printing)
-    std::string toString() const;
+    Str toString() const;
 
 private:
     // Core value storage using std::variant
     using ValueVariant = std::variant<
         std::nullptr_t,       // Nil
-        bool,                 // Boolean
-        double,               // Number
-        std::string,          // String
-        std::shared_ptr<GCObject>  // Table, Function, UserData (GC-managed types)
+        bool,               // Boolean
+        f64,                  // Number
+        Str,                  // String
+        Ptr<GCObject>         // Table, Function, UserData (GC-managed types)
     >;
     
     ValueVariant m_value;
