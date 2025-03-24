@@ -1,2 +1,5 @@
-# 忽略 lua 目录及其所有内容
-lua/
+# 忽略原始 Lua 源码目录，但不忽略我们的include/lua目录
+/lua/
+
+# 忽略 Visual Studio 的临时文件
+/.vs/
