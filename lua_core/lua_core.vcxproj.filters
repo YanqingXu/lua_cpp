@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="common">
+      <UniqueIdentifier>{f00cd77f-a46e-4968-ba73-cf94c8ee187b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="compiler">
+      <UniqueIdentifier>{37423b8a-6a1f-44d0-9cd4-2b6baf67058f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="vm">
+      <UniqueIdentifier>{95f549b0-c4b6-495d-a914-3524eb91f8b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="gc">
+      <UniqueIdentifier>{d3eace1d-d088-4c07-baa7-2fa6c381b31c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="object">
+      <UniqueIdentifier>{16dbe410-1aa5-46cb-9a37-2ab9f8c4c835}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib">
+      <UniqueIdentifier>{f68760f0-c104-4065-9c9b-c9bd2573e70b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="api">
+      <UniqueIdentifier>{26d5e87d-6316-4bfb-b402-383039f419b9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\compiler\compiler.cpp">
+      <Filter>compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\compiler\compiler_expressions.cpp">
+      <Filter>compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\compiler\compiler_statements.cpp">
+      <Filter>compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\compiler\lexer.cpp">
+      <Filter>compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\compiler\parser.cpp">
+      <Filter>compiler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vm\state.cpp">
+      <Filter>vm</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\object\function.cpp">
+      <Filter>object</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\object\string.cpp">
+      <Filter>object</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\object\table.cpp">
+      <Filter>object</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\object\userdata.cpp">
+      <Filter>object</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\object\value.cpp">
+      <Filter>object</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gc\garbage_collector.cpp">
+      <Filter>gc</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\common\config.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\common\types.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\compiler\ast.hpp">
+      <Filter>compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\compiler\compiler.hpp">
+      <Filter>compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\compiler\lexer.hpp">
+      <Filter>compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\compiler\parser.hpp">
+      <Filter>compiler</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vm\function_proto.hpp">
+      <Filter>vm</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vm\instruction.hpp">
+      <Filter>vm</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vm\state.hpp">
+      <Filter>vm</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\object\function.hpp">
+      <Filter>object</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\object\string.hpp">
+      <Filter>object</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\object\table.hpp">
+      <Filter>object</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\object\userdata.hpp">
+      <Filter>object</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\object\value.hpp">
+      <Filter>object</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gc\garbage_collector.hpp">
+      <Filter>gc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gc\gc_object.hpp">
+      <Filter>gc</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
