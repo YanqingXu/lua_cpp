@@ -5,45 +5,42 @@
 #include <string>
 
 namespace Lua {
-namespace Object {
 
 /**
- * @brief Represents an immutable string object in Lua
+ * @brief 表示 Lua 中的不可变字符串对象
  * 
- * The String class is a garbage-collectible object that represents a Lua string.
- * It provides efficient storage and string operations while participating in the
- * garbage collection system.
+ * String 类是一个可垃圾回收的对象，表示 Lua 字符串。
+ * 它提供高效的存储和字符串操作，同时参与垃圾回收系统。
  */
-class String : public GC::GCObject {
+class String : public GCObject {
 public:
-    // Create a string from a C++ string
-    explicit String(const Str& value) : m_value(value) {}
+    // 从 C++ 字符串创建
+    explicit String(const Str& value);
     
-    // Create a string from a C string
-    explicit String(const char* value) : m_value(value) {}
+    // 析构函数
+    ~String();
     
-    // Get the string value
-    const Str& value() const { return m_value; }
+    // 获取字符串值
+    const Str& getValue() const;
     
-    // Get the length of the string
-    size_t length() const { return m_value.length(); }
+    // 获取字符串长度
+    usize getLength() const;
     
-    // Comparison operators
-    bool operator==(const String& other) const { return m_value == other.m_value; }
-    bool operator!=(const String& other) const { return m_value != other.m_value; }
+    // 获取哈希值
+    u32 getHash() const;
     
-    // String concatenation
-    Ptr<String> concat(const Ptr<String>& other) const {
-        return make_ptr<String>(m_value + other->m_value);
-    }
+    // 字符串比较
+    bool equals(const String* other) const;
     
-    // GCObject interface implementation
-    Type type() const override { return Type::String; }
-    void mark() override { GCObject::mark(); }
+    // 计算哈希值
+    void computeHash();
+    
+    // GCObject 接口实现
+    void mark(GarbageCollector* gc) override;
+    GCObject::Type type() const override { return GCObject::Type::String; }
     
 private:
-    Str m_value;  // The actual string content
+    Str m_value;  // 实际的字符串内容
+    u32 m_hash;   // 字符串的哈希值
 };
-
-} // namespace Object
 } // namespace Lua

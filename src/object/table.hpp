@@ -4,16 +4,7 @@
 #include "gc/gc_object.hpp"
 #include "value.hpp"
 
-// 前向声明
 namespace Lua {
-namespace Object {
-    class Value;
-}
-}
-
-namespace Lua {
-namespace Object {
-
 /**
  * @brief Implements the Lua table data structure
  * 
@@ -21,7 +12,7 @@ namespace Object {
  * It supports both array and hash parts for efficient storage of sequential and
  * associative data. Tables are garbage-collectible objects.
  */
-class Table : public GC::GCObject {
+class Table : public GCObject {
 public:
     // 表项结构，用于存储键值对
     struct Entry {
@@ -69,7 +60,7 @@ public:
     
     // GCObject接口实现
     Type type() const override { return Type::Table; }
-    void mark() override;
+    void mark(GarbageCollector* gc) override;
     
 private:
     // 数组部分，存储连续整数索引的值（Lua中从1开始，实现中从0开始）
@@ -85,6 +76,4 @@ private:
     bool isArrayIndex(const Value& key) const;
     i32 getArrayIndex(const Value& key) const;
 };
-
-} // namespace Object
 } // namespace Lua

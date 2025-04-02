@@ -4,18 +4,17 @@
 #include "vm/function_proto.hpp"
 
 namespace Lua {
-namespace Object {
 
 // Function实现
 Function::Function(Ptr<FunctionProto> proto)
-    : GC::GCObject(GC::GCObject::Type::Function),
+    : GCObject(), 
       m_prototype(proto), 
       m_cFunction(nullptr), 
       m_isNative(false) {
 }
 
 Function::Function(std::function<i32(State*)> func)
-    : GC::GCObject(GC::GCObject::Type::Function),
+    : GCObject(), 
       m_prototype(nullptr), 
       m_cFunction(func), 
       m_isNative(true) {
@@ -33,27 +32,55 @@ i32 Function::call(State* state, i32 nargs, i32 nresults) {
     }
 }
 
-void Function::mark() {
+void Function::mark(GarbageCollector* gc) {
+    // 如果已经被标记，直接返回，避免循环引用导致的无限递归
     if (isMarked()) {
         return;
     }
     
-    GC::GCObject::mark();
+    // 首先标记自身
+    GCObject::mark(gc);
     
-    // 如果是Lua函数，标记函数原型
+    // 处理非原生函数的函数原型
     if (!isNative() && m_prototype) {
-        // 原型本身不是GCObject，但包含GC对象的引用
-        // 这里应该根据FunctionProto的实际实现方式标记其中的GC对象
-        // TODO: 待FunctionProto实现后完善此处
+        // 如果 FunctionProto 继承自 GCObject，应该这样标记
+        // m_prototype->mark(gc);
+        
+        // 如果 FunctionProto 不是 GCObject，但含有 GC 对象引用，
+        // 则需要单独处理其中的引用，例如常量表、代码块等
+        // 以下是伪代码，需要根据 FunctionProto 的实际实现进行调整
+        /*
+        // 标记常量表中的GC对象
+        for (const auto& constant : m_prototype->constants()) {
+            if (constant.isGCObject()) {
+                constant.asGCObject()->mark(gc);
+            }
+        }
+        
+        // 标记嵌套函数
+        for (const auto& nestedFunc : m_prototype->nestedFunctions()) {
+            if (nestedFunc) {
+                nestedFunc->mark(gc);
+            }
+        }
+        
+        // 标记调试信息中的字符串
+        if (m_prototype->hasDebugInfo()) {
+            for (const auto& debugString : m_prototype->debugStrings()) {
+                if (debugString) {
+                    debugString->mark(gc);
+                }
+            }
+        }
+        */
     }
     
-    // 标记上值
+    // 标记所有上值引用
     for (auto& upvalue : m_upvalues) {
         if (upvalue) {
-            upvalue->mark();
+            // 对于 Value 类型的上值，调用其 mark 方法
+            upvalue->mark(gc);
         }
     }
 }
-
-} // namespace Object
 } // namespace Lua

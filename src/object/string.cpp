@@ -1,13 +1,13 @@
 #include "string.hpp"
 #include "gc/gc_object.hpp"
+#include "gc/gc_manager.hpp"
 #include <algorithm>
 #include <cstring>
 
 namespace Lua {
-namespace Object {
 
 String::String(const Str& value) 
-    : GC::GCObject(GC::GCObjectType::String), m_value(value), m_hash(0) {
+    : GCObject(), m_value(value), m_hash(0) {
     // 计算字符串的哈希值
     computeHash();
 }
@@ -63,16 +63,11 @@ void String::computeHash() {
     m_hash = hash;
 }
 
-void String::mark(GC::GCManager* gc) {
+void String::mark(GarbageCollector* gc) {
     if (isMarked()) {
         return;
     }
     
     GCObject::mark(gc);
-    
-    // 字符串对象内部没有其他GC对象的引用
-    // 无需额外标记
 }
-
-} // namespace Object
-} // namespace LuaCpp
+} // namespace Lua

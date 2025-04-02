@@ -44,16 +44,17 @@ public:
 private:
     struct CompileState {
         Ptr<FunctionProto> proto;       // 当前函数原型
-        HashMap<Str, i32> locals;           // 局部变量名到索引的映射
+        HashMap<Str, i32> locals;       // 局部变量名到索引的映射
         Vec<Upvalue> upvalues;          // upvalue表
-        i32 scopeDepth = 0;                 // 当前作用域深度
-        i32 localCount = 0;                 // 局部变量数量
-        i32 stackSize = 0;                  // 当前栈大小
-        CompileState* enclosing = nullptr;          // 外层编译状态
+        i32 scopeDepth = 0;             // 当前作用域深度
+        i32 localCount = 0;             // 局部变量数量
+        i32 stackSize = 0;              // 当前栈大小
+        CompileState* enclosing = nullptr;  // 外层编译状态
     };
 
-    CompileState* m_current = nullptr;              // 当前编译状态
+    CompileState* m_current = nullptr;      // 当前编译状态
     Str m_source;                           // 源代码
+    bool m_lastInstructionWasReturn = false;  // 最后一条指令是否为返回指令
 
     // 作用域管理
     void beginScope();
@@ -79,6 +80,7 @@ private:
     // 语句编译
     void compileStatement(Ptr<Statement> stmt);
     void compileBlock(Ptr<Block> block);
+    void compileBlock(Ptr<Block> block, CompileState* state);
     void compileAssignmentStmt(Ptr<AssignmentStmt> stmt);
     void compileLocalVarDeclStmt(Ptr<LocalVarDeclStmt> stmt);
     void compileFunctionCallStmt(Ptr<FunctionCallStmt> stmt);
@@ -102,6 +104,13 @@ private:
     // 跳转指令处理
     usize emitJump(OpCode op, i32 line);
     void patchJump(usize jumpInstr, usize target);
+
+    // 返回指令处理
+    void emitReturn(i32 reg, i32 count, i32 line);
+
+    // 函数调用处理
+    void compileFunctionCallForMultipleReturns(Ptr<FunctionCallExpr> expr, i32 reg, i32 resultCount);
+    void compileFunctionCallForTailCall(Ptr<FunctionCallExpr> expr, i32 reg);
 
     // 常量处理
     i32 addConstant(const Object::Value& value);

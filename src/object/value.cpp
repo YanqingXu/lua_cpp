@@ -1,15 +1,10 @@
 #include "value.hpp"
-#include "string.hpp"
-#include "table.hpp"
-#include "function.hpp"
-#include "userdata.hpp"
 #include "gc/garbage_collector.hpp"
 
 #include <sstream>
 #include <cmath>
 
 namespace Lua {
-namespace Object {
 
 // 构造函数实现
 Value::Value(const Str& value) {
@@ -34,9 +29,13 @@ Value::Value(Ptr<UserData> value) {
     m_value = value;
 }
 
+Value::Value(Ptr<Thread> value) {
+    m_value = value;
+}
+
 // 静态工厂方法实现
 Value Value::nil() {
-    return Value(nullptr);
+    return Value();
 }
 
 Value Value::boolean(bool value) {
@@ -67,6 +66,10 @@ Value Value::userdata(Ptr<UserData> value) {
     return Value(value);
 }
 
+Value Value::thread(Ptr<Thread> value) {
+    return Value(value);
+}
+
 // 类型判断方法
 bool Value::isNil() const {
     return std::holds_alternative<std::nullptr_t>(m_value);
@@ -81,7 +84,7 @@ bool Value::isNumber() const {
 }
 
 bool Value::isGCObject() const {
-    return std::holds_alternative<Ptr<GC::GCObject>>(m_value);
+    return std::holds_alternative<Ptr<GCObject>>(m_value);
 }
 
 bool Value::isString() const {
@@ -93,8 +96,8 @@ bool Value::isTable() const {
         return false;
     }
     
-    auto obj = std::get<Ptr<GC::GCObject>>(m_value);
-    return obj && obj->type() == GC::GCObject::Type::Table;
+    auto obj = std::get<Ptr<GCObject>>(m_value);
+    return obj && obj->type() == GCObject::Type::Table;
 }
 
 bool Value::isFunction() const {
@@ -102,8 +105,8 @@ bool Value::isFunction() const {
         return false;
     }
     
-    auto obj = std::get<Ptr<GC::GCObject>>(m_value);
-    return obj && obj->type() == GC::GCObject::Type::Function;
+    auto obj = std::get<Ptr<GCObject>>(m_value);
+    return obj && obj->type() == GCObject::Type::Function;
 }
 
 bool Value::isUserData() const {
@@ -111,8 +114,17 @@ bool Value::isUserData() const {
         return false;
     }
     
-    auto obj = std::get<Ptr<GC::GCObject>>(m_value);
-    return obj && obj->type() == GC::GCObject::Type::UserData;
+    auto obj = std::get<Ptr<GCObject>>(m_value);
+    return obj && obj->type() == GCObject::Type::UserData;
+}
+
+bool Value::isThread() const {
+    if (!isGCObject()) {
+        return false;
+    }
+    
+    auto obj = std::get<Ptr<GCObject>>(m_value);
+    return obj && obj->type() == GCObject::Type::Thread;
 }
 
 // 类型转换方法
@@ -175,7 +187,7 @@ Ptr<Table> Value::asTable() const {
         throw std::runtime_error("Value is not a table");
     }
     
-    return std::static_pointer_cast<Table>(std::get<Ptr<GC::GCObject>>(m_value));
+    return std::static_pointer_cast<Table>(std::get<Ptr<GCObject>>(m_value));
 }
 
 Ptr<Function> Value::asFunction() const {
@@ -183,7 +195,7 @@ Ptr<Function> Value::asFunction() const {
         throw std::runtime_error("Value is not a function");
     }
     
-    return std::static_pointer_cast<Function>(std::get<Ptr<GC::GCObject>>(m_value));
+    return std::static_pointer_cast<Function>(std::get<Ptr<GCObject>>(m_value));
 }
 
 Ptr<UserData> Value::asUserData() const {
@@ -194,12 +206,20 @@ Ptr<UserData> Value::asUserData() const {
     return std::static_pointer_cast<UserData>(std::get<Ptr<GC::GCObject>>(m_value));
 }
 
-Ptr<GC::GCObject> Value::asGCObject() const {
+Ptr<Thread> Value::asThread() const {
+    if (!isThread()) {
+        throw std::runtime_error("Value is not a thread");
+    }
+    
+    return std::static_pointer_cast<Thread>(std::get<Ptr<GCObject>>(m_value));
+}
+
+Ptr<GCObject> Value::asGCObject() const {
     if (!isGCObject()) {
         return nullptr;
     }
     
-    return std::get<Ptr<GC::GCObject>>(m_value);
+    return std::get<Ptr<GCObject>>(m_value);
 }
 
 // 类型获取
@@ -211,6 +231,7 @@ Value::Type Value::type() const {
     if (isTable()) return Type::Table;
     if (isFunction()) return Type::Function;
     if (isUserData()) return Type::UserData;
+    if (isThread()) return Type::Thread;
     return Type::Nil; // 默认返回nil类型
 }
 
@@ -300,6 +321,10 @@ Str Value::toString() const {
             oss << "userdata: " << asUserData().get();
             break;
             
+        case Type::Thread:
+            oss << "thread: " << asThread().get();
+            break;
+            
         default:
             oss << "unknown";
             break;
@@ -309,11 +334,11 @@ Str Value::toString() const {
 }
 
 // 垃圾回收标记
-void Value::mark() {
+void Value::mark(GarbageCollector* gc) {
     if (isGCObject()) {
         auto obj = asGCObject();
         if (obj) {
-            obj->mark();
+            obj->mark(gc);
         }
     }
 }
@@ -345,5 +370,4 @@ size_t Value::hash() const {
     }
 }
 
-} // namespace Object
 } // namespace Lua

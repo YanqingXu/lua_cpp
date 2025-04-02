@@ -3,80 +3,80 @@
 #include "types.hpp"
 #include "object/value.hpp"
 #include "object/table.hpp"
+#include "object/string.hpp"
+#include "object/function.hpp"
+#include "object/thread.hpp"
 #include "gc/garbage_collector.hpp"
+#include "vm/vm.hpp"
 
 #include <functional>
 #include <stdexcept>
 #include <memory>
-#include <vector>
 
 namespace Lua {
-namespace VM {
 
 /**
- * @brief Exception thrown on Lua runtime errors
+ * @brief Lua 运行时错误抛出的异常
  */
 class LuaException : public std::runtime_error {
 public:
     explicit LuaException(const Str& message) : std::runtime_error(message) {}
 };
 
-// 前向声明
-class VM;
-
 /**
- * @brief Manages the execution state for a Lua instance
+ * @brief 管理 Lua 实例的执行状态
  * 
- * The State class represents a complete Lua execution environment, including
- * the value stack, global variables, and runtime configuration. It provides
- * the primary interface for executing Lua code and interacting with C++.
+ * State 类表示一个完整的 Lua 执行环境，包括
+ * 值栈、全局变量和运行时配置。它提供了
+ * 执行 Lua 代码并与 C++ 交互的主要接口。
  */
 class State : public std::enable_shared_from_this<State> {
 public:
-    // Create a new Lua state
+    // 创建一个新的 Lua 状态
     static std::shared_ptr<State> create();
     
-    // Destructor
+    // 析构函数
     ~State();
     
-    // Open standard libraries
+    // 打开标准库
     void openLibs();
     
-    // Execute Lua code
+    // 执行 Lua 代码
     i32 doString(const Str& code);
     i32 doFile(const Str& filename);
     
-    // Stack operations
-    void push(const Object::Value& value);        // Push a value onto the stack
-    void pushNil();                               // Push nil onto the stack
-    void pushBoolean(bool b);                     // Push boolean onto the stack
-    void pushNumber(double n);                    // Push number onto the stack
-    void pushString(const Str& s);                // Push string onto the stack
-    void pushTable(Ptr<Object::Table> table);     // Push table onto the stack
-    void pushFunction(Ptr<Object::Function> function); // Push function onto the stack
+    // 栈操作
+    void push(const Value& value);              // 将值推入栈中
+    void pushNil();                             // 将 nil 推入栈中
+    void pushBoolean(bool b);                   // 将布尔值推入栈中
+    void pushNumber(double n);                  // 将数字推入栈中
+    void pushString(const Str& s);              // 将字符串推入栈中
+    void pushTable(Ptr<Table> table);           // 将表推入栈中
+    void pushFunction(Ptr<Function> function);  // 将函数推入栈中
+    void pushThread(Ptr<Thread> thread);        // 将线程推入栈中
     
-    Object::Value pop();                          // Pop a value from the stack
-    void pop(i32 n);                              // Pop n values from the stack
-    Object::Value peek(i32 index) const;          // Get a value at the specified stack index
-    i32 getTop() const;                           // Get the current stack size
-    void setTop(i32 index);                       // Set the stack size
-    bool checkStack(i32 n);                       // Ensure stack has space for n more elements
-    i32 absIndex(i32 index) const;                // Convert a relative index to absolute
+    Value pop();                                    // 从栈中弹出值
+    void pop(i32 n);                                // 从栈中弹出 n 个值
+    Value peek(i32 index) const;                    // 获取栈中指定索引的值
+    i32 getTop() const;                             // 获取当前栈大小
+    void setTop(i32 index);                         // 设置栈大小
+    bool checkStack(i32 n);                         // 确保栈有足够的空间容纳 n 个元素
+    i32 absIndex(i32 index) const;                  // 将相对索引转换为绝对索引
     
-    // Table operations
-    void createTable(i32 narray = 0, i32 nrec = 0); // Create a new table and push it
-    void getTable(i32 index);                     // table[key] where key is at top of stack
-    void setTable(i32 index);                     // table[key] = value where key and value are at top
+    // 表操作
+    void createTable(i32 narray = 0, i32 nrec = 0); // 创建一个新表并将其推入栈中
+    void getTable(i32 index);                     // table[key] 其中 key 位于栈顶
+    void setTable(i32 index);                     // table[key] = value 其中 key 和 value 位于栈顶
     void getField(i32 index, const Str& k);       // table[k]
-    void setField(i32 index, const Str& k);       // table[k] = v where v is at top
-    void rawGetI(i32 index, i32 i);               // table[i] without metamethods
-    void rawSetI(i32 index, i32 i);               // table[i] = v without metamethods
+    void setField(i32 index, const Str& k);       // table[k] = v 其中 v 位于栈顶
+    void rawGetI(i32 index, i32 i);               // table[i] 不使用元方法
+    void rawSetI(i32 index, i32 i);               // table[i] = v 不使用元方法
     
-    // Global variables
-    void getGlobal(const Str& name);              // Push _G[name]
-    void setGlobal(const Str& name);              // _G[name] = v where v is at top
+    // 全局变量
+    void getGlobal(const Str& name);              // 将 _G[name] 推入栈中
+    void setGlobal(const Str& name);              // _G[name] = v 其中 v 位于栈顶
     
-    // Type checking for stack values
+    // 栈值类型检查
     bool isNil(i32 index) const;
     bool isBoolean(i32 index) const;
     bool isNumber(i32 index) const;
@@ -86,56 +86,56 @@ public:
     bool isUserData(i32 index) const;
     bool isThread(i32 index) const;
     
-    // Stack value conversion
+    // 栈值转换
     bool toBoolean(i32 index) const;
     double toNumber(i32 index) const;
     Str toString(i32 index) const;
-    Ptr<Object::Table> toTable(i32 index) const;
-    Ptr<Object::Function> toFunction(i32 index) const;
-    Ptr<Object::UserData> toUserData(i32 index) const;
+    Ptr<Table> toTable(i32 index) const;
+    Ptr<Function> toFunction(i32 index) const;
+    Ptr<UserData> toUserData(i32 index) const;
+    Ptr<Thread> toThread(i32 index) const;
     
-    // C++ function management
+    // C++ 函数管理
     using CFunction = std::function<int(State*)>;
     void registerFunction(const Str& name, CFunction func);
     i32 call(i32 nargs, i32 nresults);
     
-    // Get the garbage collector
-    GC::GarbageCollector& gc() { return *m_gc; }
+    // 获取垃圾回收器
+    GarbageCollector& gc() { return *m_gc; }
     
-    // Error handling
+    // 错误处理
     void error(const Str& message);
     
-    // Registry (private storage for C++ code)
-    Ptr<Object::Table> getRegistry() const { return m_registry; }
+    // 注册表（C++ 代码的私有存储）
+    Ptr<Table> getRegistry() const { return m_registry; }
     
 private:
-    // Private constructor (use create() instead)
+    // 私有构造函数（请使用 create() 代替）
     State();
     
-    // Initialize the state
+    // 初始化状态
     void initialize();
     
-    // Stack implementation
-    std::vector<Object::Value> m_stack;
+    // 栈实现
+    Vec<Value> m_stack;
     i32 m_stackTop;
     
-    // Global environment and registry
-    Ptr<Object::Table> m_globals;
-    Ptr<Object::Table> m_registry;
+    // 全局环境和注册表
+    Ptr<Table> m_globals;
+    Ptr<Table> m_registry;
     
-    // Garbage collector
-    std::unique_ptr<GC::GarbageCollector> m_gc;
+    // 垃圾回收器
+    UniquePtr<GarbageCollector> m_gc;
     
-    // Virtual machine
-    std::shared_ptr<VM> m_vm;
+    // 虚拟机
+    Ptr<VM> m_vm;
     
-    // Call stack tracking
+    // 调用栈跟踪
     i32 m_callDepth;
     
-    // Friends
+    // 友元类
     friend class VM;
-    friend class GC::GarbageCollector;
+    friend class GarbageCollector;
 };
 
-} // namespace VM
 } // namespace Lua

@@ -1,20 +1,12 @@
 #pragma once
 
 #include "types.hpp"
+#include "state.hpp"
 #include "gc/gc_object.hpp"
+#include "object/function.hpp"
+#include "object/value.hpp"
 
 namespace Lua {
-
-// 前向声明
-namespace Object {
-    class Function;
-    class Value;
-}
-
-namespace VM {
-
-// 前向声明
-class State;
 
 /**
  * @brief 调用帧类，用于管理函数调用状态
@@ -44,7 +36,7 @@ public:
      * @param nargs 参数数量
      * @param nresults 期望的返回值数量
      */
-    CallInfo(State* state, Ptr<Object::Function> func, i32 base, i32 nargs, i32 nresults);
+    CallInfo(State* state, Ptr<Function> func, i32 base, i32 nargs, i32 nresults);
     
     /**
      * @brief 构造C++函数调用帧
@@ -55,12 +47,12 @@ public:
      * @param nargs 参数数量
      * @param nresults 期望的返回值数量
      */
-    CallInfo(State* state, Ptr<Object::Function> func, i32 base, i32 nargs, i32 nresults, CallType type);
+    CallInfo(State* state, Ptr<Function> func, i32 base, i32 nargs, i32 nresults, CallType type);
     
     ~CallInfo() = default;
     
     // 获取当前函数
-    Ptr<Object::Function> getFunction() const { return m_function; }
+    Ptr<Function> getFunction() const { return m_function; }
     
     // 获取/设置当前指令计数器
     i32 getPC() const { return m_pc; }
@@ -98,27 +90,26 @@ public:
     i32 getAbsoluteIndex(i32 idx) const;
     
     // 获取局部变量
-    Object::Value& getLocal(i32 idx);
+    Value& getLocal(i32 idx);
     
     // 获取上值
-    Object::Value& getUpvalue(i32 idx);
+    Value& getUpvalue(i32 idx);
     
     // 获取当前调用状态描述（用于调试）
     Str getCallDescription() const;
     
 private:
-    State* m_state;                  // 虚拟机状态
-    Ptr<Object::Function> m_function; // 当前执行的函数
-    i32 m_pc;                        // 指令计数器
-    i32 m_base;                      // 栈基址（函数参数起始位置）
-    i32 m_top;                       // 栈顶（局部变量结束位置）
-    i32 m_nargs;                     // 参数数量
-    i32 m_nresults;                  // 期望的返回值数量
-    CallType m_callType;             // 调用类型
+    State* m_state;                 // 虚拟机状态
+    Ptr<Function> m_function;       // 当前执行的函数
+    i32 m_pc;                       // 指令计数器
+    i32 m_base;                     // 栈基址（函数参数起始位置）
+    i32 m_top;                      // 栈顶（局部变量结束位置）
+    i32 m_nargs;                    // 参数数量
+    i32 m_nresults;                 // 期望的返回值数量
+    CallType m_callType;            // 调用类型
     
-    CallInfo* m_previous;            // 上一个调用帧
-    CallInfo* m_next;                // 下一个调用帧
+    CallInfo* m_previous;           // 上一个调用帧
+    CallInfo* m_next;               // 下一个调用帧
 };
 
-} // namespace VM
 } // namespace Lua

@@ -33,13 +33,13 @@ public:
         : m_name(name), m_numParams(numParams), m_isVararg(isVararg) {}
 
     // 添加常量到常量表
-    usize addConstant(const Object::Value& value) {
+    usize addConstant(const Value& value) {
         m_constants.push_back(value);
         return m_constants.size() - 1;
     }
 
     // 获取常量表
-    const Vec<Object::Value>& getConstants() const { return m_constants; }
+    const Vec<Value>& getConstants() const { return m_constants; }
 
     // 添加局部变量
     void addLocalVar(const Str& name, i32 scopeDepth) {
@@ -115,7 +115,7 @@ private:
     Str m_name;                        // 函数名
     i32 m_numParams;                   // 参数数量
     bool m_isVararg;                   // 是否支持变长参数
-    Vec<Object::Value> m_constants;    // 常量表
+    Vec<Value> m_constants;    // 常量表
     Vec<Instruction> m_code;           // 指令列表
     Vec<i32> m_lineInfo;               // 行号信息
     Vec<LocalVar> m_localVars;         // 局部变量表

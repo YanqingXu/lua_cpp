@@ -1,12 +1,8 @@
 #include "callinfo.hpp"
-#include "state.hpp"
-#include "object/function.hpp"
-#include "object/value.hpp"
 
 namespace Lua {
-namespace VM {
 
-CallInfo::CallInfo(State* state, Ptr<Object::Function> func, i32 base, i32 nargs, i32 nresults)
+CallInfo::CallInfo(State* state, Ptr<Function> func, i32 base, i32 nargs, i32 nresults)
     : m_state(state),
       m_function(func),
       m_pc(0),
@@ -19,7 +15,7 @@ CallInfo::CallInfo(State* state, Ptr<Object::Function> func, i32 base, i32 nargs
       m_next(nullptr) {
 }
 
-CallInfo::CallInfo(State* state, Ptr<Object::Function> func, i32 base, i32 nargs, i32 nresults, CallType type)
+CallInfo::CallInfo(State* state, Ptr<Function> func, i32 base, i32 nargs, i32 nresults, CallType type)
     : m_state(state),
       m_function(func),
       m_pc(0),
@@ -44,7 +40,7 @@ i32 CallInfo::getAbsoluteIndex(i32 idx) const {
     }
 }
 
-Object::Value& CallInfo::getLocal(i32 idx) {
+Value& CallInfo::getLocal(i32 idx) {
     i32 absIdx = getAbsoluteIndex(idx);
     
     // 检查索引是否在有效范围内
@@ -55,7 +51,7 @@ Object::Value& CallInfo::getLocal(i32 idx) {
     return m_state->getStack()[absIdx];
 }
 
-Object::Value& CallInfo::getUpvalue(i32 idx) {
+Value& CallInfo::getUpvalue(i32 idx) {
     // 上值访问需要通过函数的闭包环境
     // 此处需要VM::State提供上值访问的接口
     // 目前简单抛出异常，等待后续实现
@@ -87,6 +83,4 @@ Str CallInfo::getCallDescription() const {
     
     return oss.str();
 }
-
-} // namespace VM
 } // namespace Lua

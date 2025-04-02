@@ -2,47 +2,47 @@
 
 #include <memory>
 
-namespace Lua {
-namespace GC {
+// 前向声明
+class GarbageCollector;
 
+namespace Lua {
 /**
- * @brief Base class for all garbage-collectible objects in Lua
+ * @brief Lua 中所有可垃圾回收对象的基类
  * 
- * GCObject serves as the base class for all Lua objects that are managed by
- * the garbage collector, including Tables, Functions, and UserData.
- * It provides common functionality for garbage collection marking and
- * lifecycle management.
+ * GCObject 作为所有由垃圾收集器管理的 Lua 对象的基类，
+ * 包括表、函数和用户数据等。它提供了垃圾收集标记和
+ * 生命周期管理的通用功能。
  */
 class GCObject : public std::enable_shared_from_this<GCObject> {
 public:
-    // Virtual destructor to ensure proper cleanup in derived classes
+	// 虚析构函数确保派生类的正确清理
     virtual ~GCObject() = default;
     
-    // Garbage collection support
-    virtual void mark() { m_marked = true; }
+    // 垃圾收集支持
+    virtual void mark(GarbageCollector* gc) { m_marked = true; }
     bool isMarked() const { return m_marked; }
     void unmark() { m_marked = false; }
     
-    // Object type enumeration
+    // 对象类型枚举
     enum class Type {
         String,
         Table,
         Closure,
         UserData,
-		Function,
+        Function,
         Thread
     };
     
-    // Get the type of this GCObject (to be implemented by derived classes)
+    // 获取 GCObject 的类型（由派生类实现）
     virtual Type type() const = 0;
     
 protected:
-    // Protected constructor to prevent direct instantiation of GCObject
+	// 受保护的构造函数，防止直接实例化 GCObject
     GCObject() : m_marked(false) {}
     
 private:
-    bool m_marked; // Mark flag for garbage collection
+	// 标记标志，用于垃圾回收
+    bool m_marked;
 };
 
-} // namespace GC
 } // namespace Lua

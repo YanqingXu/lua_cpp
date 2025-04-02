@@ -9,7 +9,6 @@
 #include <functional>
 
 namespace Lua {
-namespace Object {
 
 // 前向声明
 class Table;
@@ -24,7 +23,7 @@ class Table;
 class UserData : public GC::GCObject {
 public:
     // Create userdata with optional metatable
-    explicit UserData(std::shared_ptr<void> data, 
+    explicit UserData(Ptr<void> data, 
                      std::type_index type,
                      Ptr<Table> metatable = nullptr);
     
@@ -54,17 +53,12 @@ public:
     
     // GCObject interface
     Type type() const override { return Type::UserData; }
-    void mark() override {
-        if (isMarked()) return;
-        GCObject::mark();
-        if (m_metatable) m_metatable->mark();
-    }
+    void mark(GarbageCollector* gc) override;
     
 private:
-    std::shared_ptr<void> m_data;      // Type-erased data pointer
+    Ptr<void> m_data;      // Type-erased data pointer
     std::type_index m_typeInfo;        // Type information for runtime checks
     Ptr<Table> m_metatable;    // Optional metatable for this userdata
 };
 
-} // namespace Object
 } // namespace Lua

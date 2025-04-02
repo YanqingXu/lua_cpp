@@ -2,18 +2,16 @@
 
 #include "types.hpp"
 #include "gc/gc_object.hpp"
+#include "object/object_types.hpp"
+#include "string.hpp"
+#include "table.hpp"
+#include "function.hpp"
+#include "userdata.hpp"
+#include "thread.hpp"
 
 #include <variant>
 
 namespace Lua {
-namespace Object {
-
-// Forward declarations
-class Table;
-class Function;
-class Closure;
-class UserData;
-class String;
 
 /**
  * @brief Represents all possible Lua value types
@@ -46,6 +44,7 @@ public:
     explicit Value(Ptr<Table> value);
     explicit Value(Ptr<Function> value);
     explicit Value(Ptr<UserData> value);
+    explicit Value(Ptr<Thread> value);
 
     // Static factory methods for creating values
     static Value nil();
@@ -56,6 +55,7 @@ public:
     static Value table(Ptr<Table> value);
     static Value function(Ptr<Function> value);
     static Value userdata(Ptr<UserData> value);
+    static Value thread(Ptr<Thread> value);
 
     // Type getter
     Type type() const;
@@ -68,7 +68,7 @@ public:
     bool isTable() const;
     bool isFunction() const;
     bool isUserData() const;
-    bool isThread() const { return false; } // 未实现线程
+    bool isThread() const;
     bool isGCObject() const;
     
     // Type conversion methods
@@ -79,7 +79,8 @@ public:
     Ptr<Table> asTable() const;
     Ptr<Function> asFunction() const;
     Ptr<UserData> asUserData() const;
-    Ptr<GC::GCObject> asGCObject() const;
+    Ptr<Thread> asThread() const;
+    Ptr<GCObject> asGCObject() const;
     
     // Comparison operators
     bool operator==(const Value& other) const;
@@ -89,7 +90,7 @@ public:
     Str toString() const;
     
     // Marking for garbage collection
-    void mark();
+    void mark(GarbageCollector* gc);
     
     // For use as a key in hash tables
     size_t hash() const;
@@ -97,10 +98,14 @@ public:
 private:
     // The actual value storage using variant
     using ValueVariant = ::std::variant<
-        bool,                // Boolean
-        f64,                 // Number
-		Str,                 // String
-        Ptr<GC::GCObject>    // GC Objects (String, Table, Function, UserData)
+        bool,                        // boolean
+        i64,                         // integer
+        f64,                         // float
+        Ptr<String>,                 // string
+        Ptr<Table>,                  // table
+        Ptr<Function>,               // function
+        Ptr<UserData>,               // userdata
+        Ptr<Thread>                  // thread
     >;
     
     ValueVariant m_value;
@@ -112,6 +117,4 @@ struct ValueHash {
         return v.hash();
     }
 };
-
-} // namespace Object
 } // namespace Lua

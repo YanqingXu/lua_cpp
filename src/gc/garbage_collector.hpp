@@ -3,22 +3,16 @@
 #include "gc_object.hpp"
 #include "types.hpp"
 
-namespace Lua {
-
 // 前向声明
-namespace Object {
-    class String;
-    class Table;
-    class Function;
-    class UserData;
-}
+class String;
+class Table;
+class Function;
+class UserData;
+class Thread;
+class State;
+class FunctionProto;
 
-namespace VM {
-    class State;
-    class FunctionProto;
-}
-
-namespace GC {
+namespace Lua {
 
 /**
  * @brief 字符串池，用于内部化字符串对象
@@ -32,13 +26,13 @@ public:
     ~StringPool() = default;
     
     // 查找字符串，如果存在则返回，否则返回nullptr
-    Ptr<Object::String> find(const Str& value);
+    Ptr<String> find(const Str& value);
     
     // 添加一个字符串到池中
-    void add(const Ptr<Object::String>& str);
+    void add(const Ptr<String>& str);
     
     // 从池中移除一个字符串
-    void remove(const Ptr<Object::String>& str);
+    void remove(const Ptr<String>& str);
     
     // 清空字符串池
     void clear();
@@ -48,7 +42,7 @@ private:
     u32 computeHash(const Str& value);
     
     // 字符串映射表，使用哈希值作为键
-    HashMap<u32, Vec<Ptr<Object::String>>> m_strings;
+    HashMap<u32, Vec<Ptr<String>>> m_strings;
 };
 
 /**
@@ -66,10 +60,11 @@ public:
     ~GarbageCollector();
     
     // 创建基本Lua对象
-    Ptr<Object::String> createString(const Str& value);
-    Ptr<Object::Table> createTable(i32 narray = 0, i32 nrec = 0);
-    Ptr<Object::Function> createFunction(Ptr<VM::FunctionProto> proto);
-    Ptr<Object::UserData> createUserData(usize size);
+    Ptr<String> createString(const Str& value);
+    Ptr<Table> createTable(i32 narray = 0, i32 nrec = 0);
+    Ptr<Function> createFunction(Ptr<FunctionProto> proto);
+    Ptr<UserData> createUserData(usize size);
+    Ptr<Thread> createThread();
     
     // 执行一个完整的垃圾回收周期
     void collectGarbage();
@@ -144,6 +139,4 @@ private:
     // 友元类
     friend class VM::State;
 };
-
-} // namespace GC
 } // namespace Lua

@@ -41,7 +41,10 @@ enum class OpCode : u8 {
     
     // 控制流
     Jump,           // pc += sBx
+    JumpIfFalse,    // 如果条件为假则跳转 R(A) ? nothing : pc += sBx
+    JumpIfTrue,     // 如果条件为真则跳转 R(A) ? pc += sBx : nothing
     Call,           // 调用函数 R(A)(R(A+1), ..., R(A+B-1))
+    TailCall,       // 尾调用优化 R(A)(R(A+1), ..., R(A+B-1))
     Return,         // 从函数返回 (A-1)个值
     
     // 局部变量和Upvalue
@@ -58,6 +61,7 @@ enum class OpCode : u8 {
     // 杂项
     Len,            // R(A) := length of R(B)
     Self,           // R(A+1) := R(B); R(A) := R(B)[RK(C)]
+    Pop,            // 弹出A个值
     
     // 迭代器
     ForPrep,        // R(A) -= R(A+2); pc += sBx

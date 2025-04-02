@@ -3,7 +3,6 @@
 #include <algorithm>
 
 namespace Lua {
-namespace Object {
 
 Table::Table(i32 narray, i32 nrec) {
     // 预分配数组部分的空间
@@ -279,31 +278,31 @@ Vec<Table::Entry> Table::getEntries() const {
     return entries;
 }
 
-void Table::mark() {
+void Table::mark(GarbageCollector* gc) {
     // 调用基类的mark方法
-    GCObject::mark();
+    GCObject::mark(gc);
     
     // 标记元表
     if (m_metatable) {
-        m_metatable->mark();
+        m_metatable->mark(gc);
     }
     
     // 标记数组和哈希表中的所有GC对象
     for (const auto& value : m_array) {
         if (value.isGCObject() && value.asGCObject()) {
-            value.asGCObject()->mark();
+            value.asGCObject()->mark(gc);
         }
     }
     
     for (const auto& pair : m_hash) {
         // 标记键（如果是GC对象）
         if (pair.first.isGCObject() && pair.first.asGCObject()) {
-            pair.first.asGCObject()->mark();
+            pair.first.asGCObject()->mark(gc);
         }
         
         // 标记值（如果是GC对象）
         if (pair.second.isGCObject() && pair.second.asGCObject()) {
-            pair.second.asGCObject()->mark();
+            pair.second.asGCObject()->mark(gc);
         }
     }
 }
@@ -326,6 +325,4 @@ i32 Table::getArrayIndex(const Value& key) const {
     
     return static_cast<i32>(key.asNumber());
 }
-
-} // namespace Object
 } // namespace Lua

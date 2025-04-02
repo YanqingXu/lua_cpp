@@ -77,7 +77,7 @@ void Compiler::compileLiteralExpr(Ptr<LiteralExpr> expr, i32 reg) {
             
         default:
             // 不应该出现其他类型的字面量
-            std::cerr << "Unexpected literal type: " << static_cast<int>(value.getType()) << std::endl;
+            std::cerr << "Unexpected literal type: " << static_cast<int>(value.type()) << std::endl;
             assert(false && "Unexpected literal type");
             break;
     }
@@ -114,7 +114,7 @@ void Compiler::compileVariableExpr(Ptr<VariableExpr> expr, i32 reg) {
 }
 
 void Compiler::compileBinaryExpr(Ptr<BinaryExpr> expr, i32 reg) {
-    BinaryExpr::Op op = expr->getOperator();
+    BinaryExpr::Op op = expr->getOp();
     
     // 短路操作符的特殊处理
     if (op == BinaryExpr::Op::And) {
@@ -131,7 +131,7 @@ void Compiler::compileBinaryExpr(Ptr<BinaryExpr> expr, i32 reg) {
         compileExpression(expr->getRight(), reg);
         
         // 修补跳转指令
-        patchJump(jumpFalse, m_function->getCode().size());
+        patchJump(jumpFalse, m_current->proto->getCode().size());
         return;
     }
     
@@ -140,7 +140,7 @@ void Compiler::compileBinaryExpr(Ptr<BinaryExpr> expr, i32 reg) {
         compileExpression(expr->getLeft(), reg);
         
         // 如果左操作数为真，跳过右操作数
-        Common::usize jumpTrue = emitJump(OpCode::JumpIfTrue, 0);
+        usize jumpTrue = emitJump(OpCode::JumpIfTrue, 0);
         
         // 弹出左操作数
         emitABC(OpCode::Pop, 1, 0, 0, 0);
@@ -149,7 +149,7 @@ void Compiler::compileBinaryExpr(Ptr<BinaryExpr> expr, i32 reg) {
         compileExpression(expr->getRight(), reg);
         
         // 修补跳转指令
-        patchJump(jumpTrue, m_function->getCode().size());
+        patchJump(jumpTrue, m_current->proto->getCode().size());
         return;
     }
     
@@ -224,12 +224,12 @@ void Compiler::compileBinaryExpr(Ptr<BinaryExpr> expr, i32 reg) {
     }
 }
 
-void Compiler::compileUnaryExpr(Common::Ptr<UnaryExpr> expr, Common::i32 reg) {
+void Compiler::compileUnaryExpr(Ptr<UnaryExpr> expr, i32 reg) {
     // 编译操作数
-    compileExpression(expr->getOperand(), reg);
+    compileExpression(expr->getExpression(), reg);
     
     // 根据一元操作符生成相应指令
-    switch (expr->getOperator()) {
+    switch (expr->getOp()) {
         case UnaryExpr::Op::Negate:
             emitABC(OpCode::Neg, reg, reg, 0, 0);
             break;
@@ -244,7 +244,7 @@ void Compiler::compileUnaryExpr(Common::Ptr<UnaryExpr> expr, Common::i32 reg) {
             
         default:
             // 不应该到达这里
-            std::cerr << "Unexpected unary operator: " << static_cast<int>(expr->getOperator()) << std::endl;
+            std::cerr << "Unexpected unary operator: " << static_cast<int>(expr->getOp()) << std::endl;
             assert(false && "Unexpected unary operator");
             break;
     }
@@ -295,12 +295,12 @@ void Compiler::compileTableConstructorExpr(Ptr<TableConstructorExpr> expr, i32 r
     for (usize i = 0; i < fields.size(); ++i) {
         const TableConstructorExpr::Field& field = fields[i];
         
-        if (field.type == TableConstructorExpr::Field::Type::List) {
-            // 列表字段
+        if (!field.key) {
+            // 列表字段 (key 为空表示数组项)
             compileExpression(field.value, reg + 1);
             emitABC(OpCode::SetList, reg, i + 1, 0, 0);
-        } else if (field.type == TableConstructorExpr::Field::Type::Record) {
-            // 记录字段
+        } else {
+            // 记录字段 (key 不为空表示键值对)
             // 编译键
             compileExpression(field.key, reg + 1);
             // 编译值
@@ -330,7 +330,7 @@ void Compiler::compileFunctionDefExpr(Ptr<FunctionDefExpr> expr, i32 reg) {
     beginScope();
     
     // 处理参数
-    const Vec<Str>& params = expr->getParameters();
+    const Vec<Str>& params = expr->getParams();
     for (const Str& param : params) {
         // 添加参数作为局部变量
         addLocal(param);

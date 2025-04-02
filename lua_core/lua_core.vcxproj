@@ -138,12 +138,21 @@
     <ClCompile Include="..\src\compiler\lexer.cpp" />
     <ClCompile Include="..\src\compiler\parser.cpp" />
     <ClCompile Include="..\src\gc\garbage_collector.cpp" />
+    <ClCompile Include="..\src\lib\baselib.cpp" />
+    <ClCompile Include="..\src\lib\lib.cpp" />
+    <ClCompile Include="..\src\lib\mathlib.cpp" />
+    <ClCompile Include="..\src\lib\stringlib.cpp" />
+    <ClCompile Include="..\src\lua.cpp" />
+    <ClCompile Include="..\src\lua_test.cpp" />
     <ClCompile Include="..\src\object\function.cpp" />
     <ClCompile Include="..\src\object\string.cpp" />
     <ClCompile Include="..\src\object\table.cpp" />
+    <ClCompile Include="..\src\object\thread.cpp" />
     <ClCompile Include="..\src\object\userdata.cpp" />
     <ClCompile Include="..\src\object\value.cpp" />
+    <ClCompile Include="..\src\vm\callinfo.cpp" />
     <ClCompile Include="..\src\vm\state.cpp" />
+    <ClCompile Include="..\src\vm\vm.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common\config.hpp" />
@@ -154,14 +163,22 @@
     <ClInclude Include="..\src\compiler\parser.hpp" />
     <ClInclude Include="..\src\gc\garbage_collector.hpp" />
     <ClInclude Include="..\src\gc\gc_object.hpp" />
+    <ClInclude Include="..\src\lib\baselib.hpp" />
+    <ClInclude Include="..\src\lib\error_utils.hpp" />
+    <ClInclude Include="..\src\lib\lib.hpp" />
+    <ClInclude Include="..\src\lib\mathlib.hpp" />
+    <ClInclude Include="..\src\lib\stringlib.hpp" />
     <ClInclude Include="..\src\object\function.hpp" />
     <ClInclude Include="..\src\object\string.hpp" />
     <ClInclude Include="..\src\object\table.hpp" />
+    <ClInclude Include="..\src\object\thread.hpp" />
     <ClInclude Include="..\src\object\userdata.hpp" />
     <ClInclude Include="..\src\object\value.hpp" />
+    <ClInclude Include="..\src\vm\callinfo.hpp" />
     <ClInclude Include="..\src\vm\function_proto.hpp" />
     <ClInclude Include="..\src\vm\instruction.hpp" />
     <ClInclude Include="..\src\vm\state.hpp" />
+    <ClInclude Include="..\src\vm\vm.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

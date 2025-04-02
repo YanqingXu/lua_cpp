@@ -212,6 +212,8 @@ public:
     const Ptr<Expression>& getFunction() const { return m_function; }
     const Ptr<ExpressionList>& getArgs() const { return m_args; }
     
+    const Vec<Ptr<Expression>>& getArguments() const { return m_args->getExpressions(); }
+    
 private:
     Ptr<Expression> m_function;
     Ptr<ExpressionList> m_args;
@@ -320,6 +322,7 @@ public:
     
     const Vec<Str>& getNames() const { return m_names; }
     const Vec<Ptr<Expression>>& getInitializers() const { return m_initializers; }
+    const Vec<Ptr<Expression>>& getExpressions() const { return m_initializers; }
     
 private:
     Vec<Str> m_names;
@@ -514,6 +517,7 @@ public:
         : m_values(move(values)) {}
     
     const Vec<Ptr<Expression>>& getValues() const { return m_values; }
+    const Vec<Ptr<Expression>>& getExpressions() const { return m_values; }
     
 private:
     Vec<Ptr<Expression>> m_values;

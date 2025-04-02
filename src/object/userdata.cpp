@@ -2,14 +2,12 @@
 #include "table.hpp"
 
 namespace Lua {
-namespace Object {
-
-UserData::UserData(std::shared_ptr<void> data, std::type_index type, std::shared_ptr<Table> metatable)
+UserData::UserData(Ptr<void> data, std::type_index type, Ptr<Table> metatable)
     : GC::GCObject(GC::GCObjectType::UserData),
       m_data(data), m_typeInfo(type), m_metatable(metatable) {
 }
 
-void UserData::mark(GC::GCManager* gc) {
+void UserData::mark(GarbageCollector* gc) {
     // Skip if already marked
     if (isMarked()) {
         return;
@@ -24,5 +22,4 @@ void UserData::mark(GC::GCManager* gc) {
     }
 }
 
-} // namespace Object
-} // namespace LuaCpp
+} // namespace Lua

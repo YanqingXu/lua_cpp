@@ -7,6 +7,12 @@
 
 namespace Lua {
 
+// 辅助函数：检查表达式是否是函数调用
+bool isFunctionCall(const Ptr<Expression>& expr) {
+    return std::dynamic_pointer_cast<FunctionCallExpr>(expr) != nullptr;
+}
+
+
 void Compiler::compileStatement(Ptr<Statement> stmt) {
     if (auto assignStmt = ::std::dynamic_pointer_cast<AssignmentStmt>(stmt)) {
         compileAssignmentStmt(assignStmt);
@@ -49,9 +55,23 @@ void Compiler::compileBlock(Ptr<Block> block) {
     endScope();
 }
 
+// 带当前编译状态的 compileBlock 版本
+void Compiler::compileBlock(Ptr<Block> block, CompileState* state) {
+    // 保存旧的编译状态
+    CompileState* oldState = m_current;
+    // 设置新的编译状态
+    m_current = state;
+    
+    // 调用普通版本的 compileBlock
+    compileBlock(block);
+    
+    // 恢复旧的编译状态
+    m_current = oldState;
+}
+
 void Compiler::compileAssignmentStmt(Ptr<AssignmentStmt> stmt) {
-    const auto& vars = stmt->getVariables();
-    const auto& exprs = stmt->getExpressions();
+    const auto& vars = stmt->getVars();
+    const auto& exprs = stmt->getValues();
     
     // 声明临时变量
     i32 tempRegs = 0;
@@ -165,6 +185,42 @@ void Compiler::compileAssignmentStmt(Ptr<AssignmentStmt> stmt) {
     }
 }
 
+// 辅助函数：处理多个返回值的函数调用
+void Compiler::compileFunctionCallForMultipleReturns(Ptr<FunctionCallExpr> expr, i32 reg, i32 resultCount) {
+    // 编译函数表达式
+    compileExpression(expr->getFunction(), reg);
+    
+    // 编译参数
+    const Vec<Ptr<Expression>>& args = expr->getArguments();
+    for (usize i = 0; i < args.size(); ++i) {
+        compileExpression(args[i], reg + 1 + i);
+    }
+    
+    // 生成调用指令，C=0表示保留所有返回值
+    emitABC(OpCode::Call, reg, args.size() + 1, resultCount, 0);
+}
+
+// 辅助函数：处理尾调用优化
+void Compiler::compileFunctionCallForTailCall(Ptr<FunctionCallExpr> expr, i32 reg) {
+    // 编译函数表达式
+    compileExpression(expr->getFunction(), reg);
+    
+    // 编译参数
+    const Vec<Ptr<Expression>>& args = expr->getArguments();
+    for (usize i = 0; i < args.size(); ++i) {
+        compileExpression(args[i], reg + 1 + i);
+    }
+    
+    // 生成尾调用指令
+    emitABC(OpCode::TailCall, reg, args.size() + 1, 0, 0);
+}
+
+// 辅助函数：生成返回指令
+void Compiler::emitReturn(i32 reg, i32 count, i32 line) {
+    emitABC(OpCode::Return, reg, count + 1, 0, line);
+    m_lastInstructionWasReturn = true;
+}
+
 void Compiler::compileLocalVarDeclStmt(Ptr<LocalVarDeclStmt> stmt) {
     const auto& names = stmt->getNames();
     const auto& exprs = stmt->getExpressions();
@@ -222,13 +278,13 @@ void Compiler::compileIfStmt(Ptr<IfStmt> stmt) {
     emitABC(OpCode::Pop, 1, 0, 0, 0);
     
     // 编译then分支
-    compileBlock(stmt->getThenBlock());
+    compileBlock(stmt->getMainBranch().body);
     
     // 生成跳过else分支的指令
     usize jumpToEnd = emitJump(OpCode::Jump, 0);
     
     // 修补跳转到else分支的指令
-    patchJump(jumpToElse, m_current->function->getCode().size());
+    patchJump(jumpToElse, m_current->proto->getCode().size());
     
     // 弹出条件值
     emitABC(OpCode::Pop, 1, 0, 0, 0);
@@ -254,30 +310,30 @@ void Compiler::compileIfStmt(Ptr<IfStmt> stmt) {
         jumpToEndFromElseIf.push_back(emitJump(OpCode::Jump, 0));
         
         // 修补跳转到下一个分支的指令
-        patchJump(jumpToNextBranch, m_current->function->getCode().size());
+        patchJump(jumpToNextBranch, m_current->proto->getCode().size());
         
         // 弹出条件值
         emitABC(OpCode::Pop, 1, 0, 0, 0);
     }
     
     // 编译else分支
-    if (stmt->getElseBlock()) {
-        compileBlock(stmt->getElseBlock());
+    if (stmt->getElseBranch()) {
+        compileBlock(stmt->getElseBranch());
     }
     
     // 修补所有跳转到结尾的指令
-    patchJump(jumpToEnd, m_current->function->getCode().size());
+    patchJump(jumpToEnd, m_current->proto->getCode().size());
     for (usize jump : jumpToEndFromElseIf) {
-        patchJump(jump, m_current->function->getCode().size());
+        patchJump(jump, m_current->proto->getCode().size());
     }
 }
 
 void Compiler::compileWhileStmt(Ptr<WhileStmt> stmt) {
     // 记住循环开始的位置
-    usize loopStart = m_function->getCode().size();
+    usize loopStart = m_current->proto->getCode().size();
     
     // 编译条件表达式
-    compileExpression(stmt->getCondition(), m_localsCount);
+    compileExpression(stmt->getCondition(), m_current->localCount);
     
     // 生成条件跳转指令
     usize exitJump = emitJump(OpCode::JumpIfFalse, 0);
@@ -286,13 +342,13 @@ void Compiler::compileWhileStmt(Ptr<WhileStmt> stmt) {
     emitABC(OpCode::Pop, 1, 0, 0, 0);
     
     // 编译循环体
-    compileBlock(stmt->getBody().get(), m_currentState);
+    compileBlock(stmt->getBody().get(), m_current);
     
     // 生成跳转到循环开始的指令
-    emitASBx(OpCode::Jump, 0, loopStart - (m_function->getCode().size() + 1), 0);
+    emitASBx(OpCode::Jump, 0, loopStart - (m_current->proto->getCode().size() + 1), 0);
     
     // 修补退出循环的指令
-    patchJump(exitJump, m_function->getCode().size());
+    patchJump(exitJump, m_current->proto->getCode().size());
     
     // 弹出条件值
     emitABC(OpCode::Pop, 1, 0, 0, 0);
@@ -300,7 +356,7 @@ void Compiler::compileWhileStmt(Ptr<WhileStmt> stmt) {
 
 void Compiler::compileDoStmt(Ptr<DoStmt> stmt) {
     // 简单地编译代码块
-    compileBlock(stmt->getBody().get(), m_currentState);
+    compileBlock(stmt->getBody().get(), m_current);
 }
 
 void Compiler::compileForStmt(Ptr<NumericForStmt> stmt) {
@@ -308,24 +364,24 @@ void Compiler::compileForStmt(Ptr<NumericForStmt> stmt) {
     beginScope();
     
     // 编译初始值表达式
-    compileExpression(stmt->getInitial(), m_localsCount);
+    compileExpression(stmt->getInitial(), m_current->localCount);
     
     // 编译上限表达式
-    compileExpression(stmt->getLimit(), m_localsCount + 1);
+    compileExpression(stmt->getLimit(), m_current->localCount + 1);
     
     // 编译步长表达式，如果没有则默认为1
     if (stmt->getStep()) {
-        compileExpression(stmt->getStep(), m_localsCount + 2);
+        compileExpression(stmt->getStep(), m_current->localCount + 2);
     } else {
         // 加载默认步长1
-        emitABC(OpCode::LoadK, m_localsCount + 2, addConstant(Object::Value::number(1)), 0, 0);
+        emitABC(OpCode::LoadK, m_current->localCount + 2, addConstant(Object::Value::number(1)), 0, 0);
     }
     
     // 添加循环变量
     addLocal(stmt->getVariable());
     
     // 记住循环开始的位置
-    usize loopStart = m_function->getCode().size();
+    usize loopStart = m_current->proto->getCode().size();
     
     // 检查循环条件
     if (stmt->getStep()) {
@@ -337,13 +393,13 @@ void Compiler::compileForStmt(Ptr<NumericForStmt> stmt) {
     usize exitJump = emitJump(OpCode::ForLoop, 0);
     
     // 编译循环体
-    compileBlock(stmt->getBody().get(), m_currentState);
+    compileBlock(stmt->getBody().get(), m_current);
     
     // 生成循环指令
-    emitASBx(OpCode::ForPrep, m_localsCount, loopStart - (m_function->getCode().size() + 1), 0);
+    emitASBx(OpCode::ForPrep, m_current->localCount, loopStart - (m_current->proto->getCode().size() + 1), 0);
     
     // 修补退出循环的指令
-    patchJump(exitJump, m_function->getCode().size());
+    patchJump(exitJump, m_current->proto->getCode().size());
     
     // 离开作用域
     endScope();
@@ -354,9 +410,9 @@ void Compiler::compileGenericForStmt(Ptr<GenericForStmt> stmt) {
     beginScope();
     
     // 添加迭代器函数、状态和控制变量
-    i32 iteratorFunc = m_localsCount;
-    i32 iteratorState = m_localsCount + 1;
-    i32 controlVar = m_localsCount + 2;
+    i32 iteratorFunc = m_current->localCount;
+    i32 iteratorState = m_current->localCount + 1;
+    i32 controlVar = m_current->localCount + 2;
     
     // 编译迭代器表达式
     const auto& iterExpressions = stmt->getIterableExpressions();
@@ -385,7 +441,7 @@ void Compiler::compileGenericForStmt(Ptr<GenericForStmt> stmt) {
     }
     
     // 记住循环开始的位置
-    usize loopStart = m_function->getCode().size();
+    usize loopStart = m_current->proto->getCode().size();
     
     // 生成循环指令
     emitABC(OpCode::TForCall, iteratorFunc, varNames.size(), 0, 0);
@@ -394,13 +450,13 @@ void Compiler::compileGenericForStmt(Ptr<GenericForStmt> stmt) {
     usize exitJump = emitJump(OpCode::TForLoop, 0);
     
     // 编译循环体
-    compileBlock(stmt->getBody().get(), m_currentState);
+    compileBlock(stmt->getBody().get(), m_current);
     
     // 生成跳转到循环开始的指令
-    emitASBx(OpCode::Jump, 0, loopStart - (m_function->getCode().size() + 1), 0);
+    emitASBx(OpCode::Jump, 0, loopStart - (m_current->proto->getCode().size() + 1), 0);
     
     // 修补退出循环的指令
-    patchJump(exitJump, m_function->getCode().size());
+    patchJump(exitJump, m_current->proto->getCode().size());
     
     // 离开作用域
     endScope();
@@ -411,16 +467,16 @@ void Compiler::compileRepeatStmt(Ptr<RepeatStmt> stmt) {
     beginScope();
     
     // 记住循环开始的位置
-    usize loopStart = m_function->getCode().size();
+    usize loopStart = m_current->proto->getCode().size();
     
     // 编译循环体
-    compileBlock(stmt->getBody().get(), m_currentState);
+    compileBlock(stmt->getBody().get(), m_current);
     
     // 编译条件表达式
-    compileExpression(stmt->getCondition(), m_localsCount);
+    compileExpression(stmt->getCondition(), m_current->localCount);
     
     // 生成条件跳转指令，条件为假时继续循环
-    emitASBx(OpCode::JumpIfFalse, m_localsCount, loopStart - (m_function->getCode().size() + 1), 0);
+    emitASBx(OpCode::JumpIfFalse, m_current->localCount, loopStart - (m_current->proto->getCode().size() + 1), 0);
     
     // 弹出条件值
     emitABC(OpCode::Pop, 1, 0, 0, 0);
@@ -438,17 +494,17 @@ void Compiler::compileFunctionDeclStmt(Ptr<FunctionDeclStmt> stmt) {
     bool isLocal = stmt->isLocal();
     
     // 保存当前编译状态
-    CompileState* previousState = m_currentState;
+    CompileState* previousState = m_current;
     
     // 创建新的编译状态
     CompileState newState;
-    newState.function = std::make_shared<FunctionProto>();
-    newState.function->setName(funcName);
+    newState.proto = std::make_shared<FunctionProto>();
+    newState.proto->setName(funcName);
     newState.enclosing = previousState;
     newState.scopeDepth = 0;
     
     // 设置当前编译状态
-    m_currentState = &newState;
+    m_current = &newState;
     
     // 进入新作用域
     beginScope();
@@ -474,19 +530,19 @@ void Compiler::compileFunctionDeclStmt(Ptr<FunctionDeclStmt> stmt) {
     endScope();
     
     // 恢复之前的编译状态
-    m_currentState = previousState;
+    m_current = previousState;
     
     // 添加子函数原型
-    i32 protoIndex = m_function->addProto(newState.function);
+    i32 protoIndex = m_current->proto->addProto(newState.proto);
     
     // 函数注册目标寄存器
-    i32 funcReg = m_localsCount;
+    i32 funcReg = m_current->localCount;
     
     // 生成创建闭包的指令
     emitABx(OpCode::Closure, funcReg, protoIndex, 0);
     
     // 为每个upvalue生成额外指令
-    for (const auto& upvalue : newState.function->getUpvalues()) {
+    for (const auto& upvalue : newState.proto->getUpvalues()) {
         emitABC(upvalue.isLocal ? OpCode::Move : OpCode::GetUpval, 0, upvalue.index, 0, 0);
     }
     
@@ -510,13 +566,13 @@ void Compiler::compileFunctionDeclStmt(Ptr<FunctionDeclStmt> stmt) {
         // 找到表
         if (isLocal) {
             // 尝试解析为局部变量
-            i32 local = resolveLocal(m_currentState, nameComponents[0]);
+            i32 local = resolveLocal(m_current, nameComponents[0]);
             if (local != -1) {
                 // 加载局部变量
                 emitABC(OpCode::Move, funcReg + 1, local, 0, 0);
             } else {
                 // 尝试解析为upvalue
-                i32 upvalue = resolveUpvalue(m_currentState, nameComponents[0]);
+                i32 upvalue = resolveUpvalue(m_current, nameComponents[0]);
                 if (upvalue != -1) {
                     // 加载upvalue
                     emitABC(OpCode::GetUpval, funcReg + 1, upvalue, 0, 0);

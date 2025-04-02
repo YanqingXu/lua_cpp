@@ -3,6 +3,7 @@
 #include "object/table.hpp"
 #include "object/function.hpp"
 #include "object/userdata.hpp"
+#include "object/thread.hpp"
 #include "vm/state.hpp"
 
 namespace Lua {
@@ -16,7 +17,7 @@ StringPool::StringPool() {
     // 初始化哈希映射表
 }
 
-Ptr<Object::String> StringPool::find(const Str& value) {
+Ptr<String> StringPool::find(const Str& value) {
     // 计算哈希值
     u32 hash = computeHash(value);
     
@@ -34,12 +35,12 @@ Ptr<Object::String> StringPool::find(const Str& value) {
     return nullptr;
 }
 
-void StringPool::add(const Ptr<Object::String>& str) {
+void StringPool::add(const Ptr<String>& str) {
     u32 hash = computeHash(str->value());
     m_strings[hash].push_back(str);
 }
 
-void StringPool::remove(const Ptr<Object::String>& str) {
+void StringPool::remove(const Ptr<String>& str) {
     u32 hash = computeHash(str->value());
     
     auto it = m_strings.find(hash);
@@ -94,7 +95,7 @@ GarbageCollector::~GarbageCollector() {
     m_objects.clear();
 }
 
-Ptr<Object::String> GarbageCollector::createString(const Str& value) {
+Ptr<String> GarbageCollector::createString(const Str& value) {
     // 首先在字符串池中查找
     auto pooled = m_stringPool->find(value);
     if (pooled) {
@@ -102,14 +103,14 @@ Ptr<Object::String> GarbageCollector::createString(const Str& value) {
     }
     
     // 创建新字符串对象
-    auto str = std::make_shared<Object::String>(value);
+    auto str = std::make_shared<String>(value);
     
     // 添加到字符串池和对象列表
     m_stringPool->add(str);
     m_objects.push_back(str);
     
     // 更新内存使用量
-    m_totalMemory += sizeof(Object::String) + value.length();
+    m_totalMemory += sizeof(String) + value.length();
     
     // 检查是否需要触发GC
     maybeGC();
@@ -117,15 +118,15 @@ Ptr<Object::String> GarbageCollector::createString(const Str& value) {
     return str;
 }
 
-Ptr<Object::Table> GarbageCollector::createTable(i32 narray, i32 nrec) {
+Ptr<Table> GarbageCollector::createTable(i32 narray, i32 nrec) {
     // 创建新表对象
-    auto table = std::make_shared<Object::Table>(narray, nrec);
+    auto table = std::make_shared<Table>(narray, nrec);
     
     // 添加到对象列表
     m_objects.push_back(table);
     
     // 更新内存使用量
-    m_totalMemory += sizeof(Object::Table) + narray * sizeof(Object::Value);
+    m_totalMemory += sizeof(Table) + narray * sizeof(Value);
     
     // 检查是否需要触发GC
     maybeGC();
@@ -133,15 +134,15 @@ Ptr<Object::Table> GarbageCollector::createTable(i32 narray, i32 nrec) {
     return table;
 }
 
-Ptr<Object::Function> GarbageCollector::createFunction(Ptr<VM::FunctionProto> proto) {
+Ptr<Function> GarbageCollector::createFunction(Ptr<VM::FunctionProto> proto) {
     // 创建新函数对象
-    auto func = std::make_shared<Object::Function>(proto);
+    auto func = std::make_shared<Function>(proto);
     
     // 添加到对象列表
     m_objects.push_back(func);
     
     // 更新内存使用量
-    m_totalMemory += sizeof(Object::Function);
+    m_totalMemory += sizeof(Function);
     
     // 检查是否需要触发GC
     maybeGC();
@@ -149,20 +150,36 @@ Ptr<Object::Function> GarbageCollector::createFunction(Ptr<VM::FunctionProto> pr
     return func;
 }
 
-Ptr<Object::UserData> GarbageCollector::createUserData(usize size) {
+Ptr<UserData> GarbageCollector::createUserData(usize size) {
     // 创建新用户数据对象
-    auto userData = std::make_shared<Object::UserData>(size);
+    auto userData = std::make_shared<UserData>(size);
     
     // 添加到对象列表
     m_objects.push_back(userData);
     
     // 更新内存使用量
-    m_totalMemory += sizeof(Object::UserData) + size;
+    m_totalMemory += sizeof(UserData) + size;
     
     // 检查是否需要触发GC
     maybeGC();
     
     return userData;
+}
+
+Ptr<Thread> GarbageCollector::createThread() {
+    // 创建新线程对象
+    auto thread = std::make_shared<Thread>(m_state);
+    
+    // 添加到对象列表
+    m_objects.push_back(thread);
+    
+    // 更新内存使用量
+    m_totalMemory += sizeof(Thread);
+    
+    // 检查是否需要触发GC
+    maybeGC();
+    
+    return thread;
 }
 
 void GarbageCollector::collectGarbage() {
@@ -226,7 +243,7 @@ void GarbageCollector::collectGarbageIncremental() {
                     // 根据对象类型，将其引用的对象加入标记队列
                     switch (obj->type()) {
                         case GCObject::Type::Table: {
-                            auto table = std::static_pointer_cast<Object::Table>(obj);
+                            auto table = std::static_pointer_cast<Table>(obj);
                             // 标记表中的所有键和值
                             for (const auto& entry : table->getEntries()) {
                                 if (entry.key.isGCObject()) {
@@ -269,7 +286,7 @@ void GarbageCollector::collectGarbageIncremental() {
                             
                             // 如果是字符串，从字符串池中移除
                             if (obj->type() == GCObject::Type::String) {
-                                auto str = std::static_pointer_cast<Object::String>(obj);
+                                auto str = std::static_pointer_cast<String>(obj);
                                 m_stringPool->remove(str);
                             }
                             
@@ -359,7 +376,7 @@ void GarbageCollector::sweep() {
             
             // 如果是字符串，从字符串池中移除
             if (obj->type() == GCObject::Type::String) {
-                auto str = std::static_pointer_cast<Object::String>(obj);
+                auto str = std::static_pointer_cast<String>(obj);
                 m_stringPool->remove(str);
             }
             
@@ -387,25 +404,31 @@ usize GarbageCollector::getObjectSize(const Ptr<GCObject>& obj) const {
     
     switch (obj->type()) {
         case GCObject::Type::String: {
-            auto str = std::static_pointer_cast<Object::String>(obj);
-            size = sizeof(Object::String) + str->value().length();
+            auto str = std::static_pointer_cast<String>(obj);
+            size = sizeof(String) + str->value().length();
             break;
         }
         case GCObject::Type::Table: {
-            auto table = std::static_pointer_cast<Object::Table>(obj);
+            auto table = std::static_pointer_cast<Table>(obj);
             // 表的大小估计
-            size = sizeof(Object::Table);
+            size = sizeof(Table);
             // TODO: 更精确地计算表大小
             break;
         }
         case GCObject::Type::Function: {
-            size = sizeof(Object::Function);
+            size = sizeof(Function);
             // TODO: 更精确地计算函数大小
             break;
         }
         case GCObject::Type::UserData: {
-            auto userData = std::static_pointer_cast<Object::UserData>(obj);
-            size = sizeof(Object::UserData) + userData->getSize();
+            auto userData = std::static_pointer_cast<UserData>(obj);
+            size = sizeof(UserData) + userData->getSize();
+            break;
+        }
+        case GCObject::Type::Thread: {
+            auto thread = std::static_pointer_cast<Thread>(obj);
+            size = sizeof(Thread);
+            // TODO: 更精确地计算线程大小，包括栈空间等
             break;
         }
         default:

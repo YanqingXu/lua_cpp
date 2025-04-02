@@ -1,4 +1,4 @@
-#include "lua/lua.hpp"
+#include "vm/state.hpp"
 #include <iostream>
 #include <string>
 #include <fstream>
