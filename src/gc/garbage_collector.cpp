@@ -15,6 +15,7 @@ namespace GC {
 
 StringPool::StringPool() {
     // 初始化哈希映射表
+	m_strings.reserve(256);
 }
 
 Ptr<String> StringPool::find(const Str& value) {
@@ -134,7 +135,7 @@ Ptr<Table> GarbageCollector::createTable(i32 narray, i32 nrec) {
     return table;
 }
 
-Ptr<Function> GarbageCollector::createFunction(Ptr<VM::FunctionProto> proto) {
+Ptr<Function> GarbageCollector::createFunction(Ptr<FunctionProto> proto) {
     // 创建新函数对象
     auto func = std::make_shared<Function>(proto);
     
@@ -152,7 +153,7 @@ Ptr<Function> GarbageCollector::createFunction(Ptr<VM::FunctionProto> proto) {
 
 Ptr<UserData> GarbageCollector::createUserData(usize size) {
     // 创建新用户数据对象
-    auto userData = std::make_shared<UserData>(size);
+    auto userData = make_ptr<UserData>(size);
     
     // 添加到对象列表
     m_objects.push_back(userData);

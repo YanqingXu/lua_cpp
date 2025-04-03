@@ -97,7 +97,7 @@ public:
     
     // C++ 函数管理
     using CFunction = std::function<int(State*)>;
-    void registerFunction(const Str& name, CFunction func);
+    Ptr<Function> registerFunction(const Str& name, CFunction func);
     i32 call(i32 nargs, i32 nresults);
     
     // 获取垃圾回收器

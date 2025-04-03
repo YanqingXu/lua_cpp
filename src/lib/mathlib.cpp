@@ -43,11 +43,11 @@ void openMathLib(State* state) {
     mathTable->set(Value("max"), Value(state->registerFunction("max", math_max)));
     
     // 设置数学常量
-    mathTable->set("pi", Value(3.141592653589793));
-    mathTable->set("huge", Value(INFINITY));
+    mathTable->set(Value("pi"), Value(3.141592653589793));
+    mathTable->set(Value("huge"), Value(INFINITY));
     
     // 将数学表设置为全局变量
-    state->getGlobals()->set("math", Value(mathTable));
+    state->getGlobals()->set(Value("math"), Value(mathTable));
     
     // 初始化随机数生成器
     if (!rng_seeded) {

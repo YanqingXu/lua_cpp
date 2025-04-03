@@ -346,13 +346,29 @@ Ptr<Thread> State::toThread(i32 index) const {
 
 // 函数调用
 i32 State::call(i32 nargs, i32 nresults) {
-    // TODO: 实现函数调用
-    return 0;
+    // 检查栈上是否有函数
+    if (m_stackTop <= nargs) {
+        throw LuaException("attempt to call a non-function value");
+    }
+    
+    // 获取栈上的函数对象（在调用参数之前）
+    Value funcValue = m_stack[m_stackTop - nargs - 1];
+    if (!funcValue.isFunction()) {
+        throw LuaException("attempt to call a non-function value");
+    }
+    
+    // 获取函数对象
+    Ptr<Function> func = funcValue.asFunction();
+    
+    // 调用函数，执行虚拟机
+    return m_vm->execute(func, nargs, nresults);
 }
 
 // 注册C++函数
-void State::registerFunction(const Str& name, CFunction func) {
-    // TODO: 创建C函数对象并注册到全局环境
+Ptr<Function> State::registerFunction(const Str& name, CFunction func) {
+    // 创建一个新的C++函数对象
+    Ptr<Function> function = m_gc->createFunction(func);
+    return function;
 }
 
 // 错误处理
