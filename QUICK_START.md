@@ -28,7 +28,16 @@
 
 ### 第一步：建立项目宪法 (立即执行)
 
-在Claude AI中执行以下命令：
+**如果你使用Claude AI，请执行：**
+
+```
+/constitution 创建现代C++版Lua解释器的项目治理原则，重点关注：
+1. 代码质量标准 - 采用C++17/20最佳实践，RAII内存管理，智能指针使用
+2. 测试标准 - 要求100%测试覆盖，性能基准测试，Lua 5.1.5兼容性验证
+3. 性能要求 - 目标达到微秒级响应时间，内存效率优化，零拷贝设计
+4. 兼容性要求 - 严格遵循Lua 5.1.5语法和语义，API完全兼容
+5. 开发流程 - 测试驱动开发，代码审查机制，持续集成
+**如果你使用GitHub Copilot，请在VS Code中执行：**
 
 ```
 /constitution 创建现代C++版Lua解释器的项目治理原则，重点关注：
@@ -41,6 +50,8 @@
 ```
 
 ### 第二步：定义功能规格 (宪法建立后)
+
+**如果你使用Claude AI，请执行：**
 
 ```
 /specify 基于lua_c_analysis和lua_with_cpp项目，定义现代C++版Lua解释器的完整功能规格：
@@ -66,7 +77,14 @@
 - 完整的Lua兼容性测试套件
 ```
 
+**如果你使用GitHub Copilot，请在VS Code中执行：**
+
+```
+/specify 基于lua_c_analysis和lua_with_cpp项目，定义现代C++版Lua解释器的完整功能规格。请参考项目中的REFERENCE_ANALYSIS.md文件，包含了两个参考项目的深度技术分析。
+
 ### 第三步：制定技术方案 (规格定义后)
+
+**如果你使用Claude AI，请执行：**
 
 ```
 /plan 为现代C++版Lua解释器制定详细的技术实现方案：
@@ -96,7 +114,14 @@
 - 建立Lua兼容性基准测试套件
 ```
 
+**如果你使用GitHub Copilot，请在VS Code中执行：**
+
+```
+/plan 为现代C++版Lua解释器制定详细的技术实现方案，采用C++17/20技术栈和CMake构建系统。基于lua_with_cpp的现有架构进行增强，集成lua_c_analysis的核心算法。
+
 ### 第四步：生成开发任务 (方案制定后)
+
+**对于Claud AI和GitHub Copilot，命令相同：**
 
 ```
 /tasks 基于实现计划，生成详细的开发任务列表，重点考虑：
@@ -108,11 +133,30 @@
 
 ### 第五步：开始实施开发 (任务规划后)
 
+**对于Claud AI和GitHub Copilot，命令相同：**
+
 ```
 /implement 执行所有开发任务，构建完整的现代C++版Lua解释器
 ```
 
-## 📂 项目结构一览
+## 🎛️ AI助手配置
+
+该项目支持多种AI助手，你可以根据你的偏好选择：
+
+### Claude AI
+- **配置位置**: `.claude/commands/`
+- **优势**: 深度代码理解，复杂架构设计
+- **使用方式**: 在Claude界面中直接输入命令
+
+### GitHub Copilot  
+- **配置位置**: `.github/prompts/`
+- **优势**: VS Code集成，实时代码生成
+- **使用方式**: 在VS Code中Ctrl+I开启Copilot Chat，输入命令
+
+### 共同特点
+- 所有AI助手都使用相同的五个核心命令
+- 所有配置都包含了lua_c_analysis和lua_with_cpp的参考信息
+- 所有命令都遵循Spec-Kit规格驱动开发方法论
 
 ```
 lua_cpp/                           # 你的新项目根目录
@@ -159,7 +203,11 @@ lua_cpp/                           # 你的新项目根目录
 - ✅ **流程完善**: 规格驱动开发确保质量
 - ✅ **目标明确**: Lua 5.1.5完全兼容性
 
-**立即开始执行 `/constitution` 命令，开启你的现代Lua解释器开发之旅！** 🚀
+**立即开始**: 
+- **如果使用Claude AI**: 执行 `/constitution` 命令
+- **如果使用GitHub Copilot**: 在VS Code中打开Copilot Chat，执行 `/constitution` 命令
+
+开启你的现代Lua解释器开发之旅！** 🚀
 
 ---
 
