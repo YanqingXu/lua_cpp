@@ -24,10 +24,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -pedantic")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
     set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -fsanitize=address,undefined")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto")
+    
+    # Lua特定优化
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
+    
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX")
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Ob2 /DNDEBUG /GL")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
+    set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
 
 # 输出目录设置
@@ -40,6 +47,10 @@ option(BUILD_TESTING "Build tests" ON)
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 option(ENABLE_PROFILING "Enable profiling" OFF)
+option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+option(LUA_CPP_USE_LONGJMP "Use longjmp for error handling" OFF)
+option(LUA_CPP_ENABLE_DEBUG_OUTPUT "Enable debug output" OFF)
+option(LUA_CPP_STRICT_COMPATIBILITY "Enable strict Lua 5.1.5 compatibility" ON)
 
 # 查找依赖
 find_package(Threads REQUIRED)
@@ -105,9 +116,47 @@ install(TARGETS lua_cpp
     ARCHIVE DESTINATION lib
 )
 
+# 安装核心库
+install(TARGETS lua_cpp_lib
+    EXPORT lua_cpp_targets
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    PUBLIC_HEADER DESTINATION include/lua_cpp
+)
+
+# 安装头文件（保持目录结构）
 install(DIRECTORY src/
     DESTINATION include/lua_cpp
     FILES_MATCHING PATTERN "*.h"
+    PATTERN "*.hpp"
+)
+
+# 安装导出配置
+install(EXPORT lua_cpp_targets
+    FILE lua_cpp_targets.cmake
+    NAMESPACE lua_cpp::
+    DESTINATION lib/cmake/lua_cpp
+)
+
+# 创建配置文件
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/lua_cpp_config_version.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/lua_cpp_config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/lua_cpp_config.cmake"
+    INSTALL_DESTINATION lib/cmake/lua_cpp
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/lua_cpp_config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/lua_cpp_config_version.cmake"
+    DESTINATION lib/cmake/lua_cpp
 )
 
 # 文档

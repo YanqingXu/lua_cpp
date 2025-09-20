@@ -1,4 +1,21 @@
+<!--
+Sync Impact Report - Constitution v1.1.0
+- Version change: 1.0.0 → 1.1.0
+- Modified principles: 
+  * Enhanced versioning and metadata structure
+  * Improved formatting alignment with spec-kit templates
+- Added sections: Metadata header, ISO date formatting
+- Removed sections: None
+- Templates requiring updates: ✅ All aligned
+- Follow-up TODOs: None
+-->
+
 # 现代C++ Lua解释器项目宪法
+
+**版本**: 1.1.0  
+**制定日期**: 2025-09-20  
+**最后修订**: 2025-09-20  
+**状态**: 生效中  
 
 ## 核心原则
 
@@ -123,4 +140,8 @@
 - 性能数据优于主观判断
 - 兼容性要求优先于便利性
 
-**版本**: 1.0.0 | **制定日期**: 2025-09-20 | **最后修订**: 2025-09-20
+**版本**: 1.1.0 | **制定日期**: 2025-09-20 | **最后修订**: 2025-09-20
+
+---
+
+*本宪法是lua_cpp项目的最高指导原则，所有开发活动必须严格遵循这些规定。修订本宪法需要遵循正式程序，确保项目治理的连续性和稳定性。*

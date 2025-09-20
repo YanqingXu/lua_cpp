@@ -1,0 +1,36 @@
+@PACKAGE_INIT@
+
+# lua_cpp CMake配置文件
+
+include(CMakeFindDependencyMacro)
+
+# 检查依赖
+find_dependency(Threads REQUIRED)
+
+# 包含目标文件
+if(NOT TARGET lua_cpp::lua_cpp_lib)
+    include("${CMAKE_CURRENT_LIST_DIR}/lua_cpp_targets.cmake")
+endif()
+
+# 检查组件
+set(_lua_cpp_supported_components api vm compiler parser memory core)
+
+foreach(_comp ${lua_cpp_FIND_COMPONENTS})
+    if (NOT _comp IN_LIST _lua_cpp_supported_components)
+        set(lua_cpp_FOUND False)
+        set(lua_cpp_NOT_FOUND_MESSAGE "Unsupported component: ${_comp}")
+    endif()
+endforeach()
+
+# 设置变量
+set(LUA_CPP_VERSION @PROJECT_VERSION@)
+set(LUA_CPP_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(LUA_CPP_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(LUA_CPP_VERSION_PATCH @PROJECT_VERSION_PATCH@)
+
+# 创建别名
+if(TARGET lua_cpp::lua_cpp_lib AND NOT TARGET lua_cpp::lua_cpp)
+    add_library(lua_cpp::lua_cpp ALIAS lua_cpp::lua_cpp_lib)
+endif()
+
+check_required_components(lua_cpp)
