@@ -1,10 +1,10 @@
 # 📋 任务列表 - Lua C++ 解释器项目
 
-## 🎯 当前状态：T010 (Lexer契约测试)
+## 🎯 当前状态：T011 (Parser契约测试)
 
 ---
 
-## ✅ 已完成任务 (9/19)
+## ✅ 已完成任务 (11/58)
 
 ### 🏗️ 基础设施阶段
 - [x] **T001** - 创建项目目录结构
@@ -19,23 +19,31 @@
 - [x] **T008** - 编写LuaFunction契约测试
 - [x] **T009** - 编写LuaState契约测试
 
+### 🔤 编译器前端契约测试阶段
+- [x] **T010** - 编写Lexer契约测试 ✅
+  - ✅ 创建 `tests/contract/test_lexer_contract.cpp` (916行)
+  - ✅ 定义Token类型和Lexer接口
+- [x] **T011** - 编写Parser契约测试 ✅ **(刚完成 2025-09-20)**
+  - ✅ 创建 `tests/contract/test_parser_contract.cpp` (1,900+行)
+  - ✅ 完整语法分析器契约测试覆盖
+  - ✅ 表达式、语句、控制流、错误处理全覆盖
+  - ✅ 包含🔍lua_c_analysis验证和🏗️lua_with_cpp参考
+  - ✅ 覆盖所有词法分析方面：Token类型、标识符、关键字、数字、字符串、操作符、注释、错误处理、位置跟踪、性能边界测试
+
 ---
 
 ## 🔄 进行中任务
 
 ### 🎯 当前任务
-- [ ] **T010** - 编写Lexer契约测试 `[正在进行]`
-  - 📝 创建 `tests/contract/test_lexer_contract.cpp`
-  - 🎯 定义Token类型和Lexer接口
-  - 📋 测试词法分析的所有方面
+- [ ] **T012** - 编写Compiler契约测试 `[即将开始]`
+  - 📝 创建 `tests/contract/test_compiler_contract.cpp`
+  - 🎯 测试字节码生成、优化、常量表管理
+  - 🔍 参考lua_c_analysis/lcode.c验证
+  - 🏗️ 借鉴lua_with_cpp现代编译器设计
 
 ---
 
-## 📅 待办任务 (10个)
-
-### 🔤 编译器前端 (3个)
-- [ ] **T011** - 编写Parser契约测试
-- [ ] **T012** - 编写Compiler契约测试
+## 📅 待办任务 (8个)
 
 ### ⚙️ 运行时系统 (3个)  
 - [ ] **T013** - 编写VM契约测试

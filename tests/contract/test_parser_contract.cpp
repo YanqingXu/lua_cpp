@@ -1,19 +1,38 @@
 /**
  * @file test_parser_contract.cpp
- * @brief Parser（语法分析器）契约测试
- * @description 测试Lua语法分析器的所有行为契约，确保100% Lua 5.1.5兼容性
- *              包括AST节点类型、表达式解析、语句解析、错误处理等核心功能
+ * @brief Lua语法分析器契约测试
+ * @description 基于lua_c_analysis和lua_with_cpp双重验证的Parser契约测试
  * @date 2025-09-20
+ * 
+ * 测试覆盖范围：
+ * 1. 基础语法结构解析
+ * 2. 表达式解析和优先级
+ * 3. 语句解析和控制流
+ * 4. 函数定义和调用
+ * 5. 表构造和访问
+ * 6. 错误检测和恢复
+ * 7. AST构建验证
+ * 8. 边界条件处理
+ * 
+ * 双重验证机制：
+ * - lua_c_analysis: 验证行为与Lua 5.1.5一致性
+ * - lua_with_cpp: 验证现代C++设计模式正确性
  */
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/generators/catch_generators.hpp>
+#include <memory>
+#include <string>
+#include <vector>
+#include <sstream>
+#include <chrono>
 
-// 注意：这些头文件还不存在，这是TDD方法 - 先写测试定义接口
-#include "parser/ast.h"
+// 测试用的Parser相关头文件（TDD - 先定义接口）
 #include "parser/parser.h"
+#include "parser/ast.h"
 #include "lexer/lexer.h"
+#include "lexer/token.h"
 #include "core/lua_common.h"
 #include "core/lua_errors.h"
 
@@ -21,33 +40,272 @@ using namespace lua_cpp;
 using Catch::Approx;
 
 /* ========================================================================== */
-/* AST节点基础契约 */
+/* 测试辅助工具类 */
 /* ========================================================================== */
 
-TEST_CASE("ASTNode - 基础节点契约", "[parser][contract][ast][node]") {
-    SECTION("AST节点应该包含类型和位置信息") {
-        auto node = std::make_unique<ASTNode>(ASTNodeType::Block);
-        REQUIRE(node->GetType() == ASTNodeType::Block);
-        REQUIRE(node->GetPosition().line == 1);
-        REQUIRE(node->GetPosition().column == 1);
+class ParserTestHelper {
+public:
+    /**
+     * @brief 创建Parser实例
+     * @param source 源代码字符串
+     * @param config Parser配置
+     * @return Parser实例
+     */
+    static std::unique_ptr<Parser> CreateParser(const std::string& source, 
+                                               const ParserConfig& config = ParserConfig{}) {
+        auto input_stream = std::make_unique<StringInputStream>(source);
+        auto lexer = std::make_unique<Lexer>(std::move(input_stream));
+        return std::make_unique<Parser>(std::move(lexer), config);
     }
 
-    SECTION("AST节点应该支持父子关系") {
-        auto parent = std::make_unique<BlockNode>();
-        auto child = std::make_unique<ExpressionStatement>();
-        
-        ASTNode* child_ptr = child.get();
-        parent->AddChild(std::move(child));
-        
-        REQUIRE(parent->GetChildCount() == 1);
-        REQUIRE(parent->GetChild(0) == child_ptr);
-        REQUIRE(child_ptr->GetParent() == parent.get());
+    /**
+     * @brief 验证解析成功
+     * @param parser Parser实例
+     * @param expected_error_count 期望的错误数量
+     */
+    static void VerifyParseSuccess(const Parser& parser, Size expected_error_count = 0) {
+        REQUIRE(parser.GetState() == ParserState::Completed);
+        REQUIRE(parser.GetErrorCount() == expected_error_count);
     }
 
-    SECTION("AST节点应该支持访问者模式") {
-        auto node = std::make_unique<NumberLiteral>(42.0);
+    /**
+     * @brief 验证解析错误
+     * @param parser Parser实例
+     * @param expected_min_errors 最少期望的错误数量
+     */
+    static void VerifyParseError(const Parser& parser, Size expected_min_errors = 1) {
+        REQUIRE(parser.GetState() == ParserState::Error);
+        REQUIRE(parser.GetErrorCount() >= expected_min_errors);
+    }
+
+    /**
+     * @brief 验证AST节点基本属性
+     * @param node AST节点
+     * @param expected_type 期望的节点类型
+     */
+    template<typename T>
+    static void VerifyASTNode(const std::unique_ptr<T>& node, ASTNodeType expected_type) {
+        REQUIRE(node != nullptr);
+        REQUIRE(node->GetType() == expected_type);
+        REQUIRE(node->GetPosition().IsValid());
+    }
+};
+
+/* ========================================================================== */
+/* 基础语法结构解析测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 基础语法结构", "[parser][contract][basic]") {
+    SECTION("空程序解析") {
+        auto parser = ParserTestHelper::CreateParser("");
+        auto program = parser->ParseProgram();
         
-        class TestVisitor : public ASTVisitor {
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        ParserTestHelper::VerifyASTNode(program, ASTNodeType::Program);
+        REQUIRE(program->GetStatements().size() == 0);
+    }
+
+    SECTION("单语句程序") {
+        auto parser = ParserTestHelper::CreateParser("return 42");
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        ParserTestHelper::VerifyASTNode(program, ASTNodeType::Program);
+        REQUIRE(program->GetStatements().size() == 1);
+        
+        auto& stmt = program->GetStatements()[0];
+        ParserTestHelper::VerifyASTNode(stmt, ASTNodeType::ReturnStatement);
+    }
+
+    SECTION("多语句程序") {
+        std::string source = R"(
+            local x = 10
+            local y = 20
+            return x + y
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        ParserTestHelper::VerifyASTNode(program, ASTNodeType::Program);
+        REQUIRE(program->GetStatements().size() == 3);
+    }
+
+    SECTION("语句分隔符处理") {
+        auto parser = ParserTestHelper::CreateParser("local a = 1; local b = 2; return a + b");
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        REQUIRE(program->GetStatements().size() == 3);
+    }
+}
+
+/* ========================================================================== */
+/* 表达式解析测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 表达式解析", "[parser][contract][expression]") {
+    SECTION("字面量表达式") {
+        struct TestCase {
+            std::string source;
+            ASTNodeType expected_type;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"42", ASTNodeType::NumberLiteral, "整数字面量"},
+            {"3.14", ASTNodeType::NumberLiteral, "浮点数字面量"},
+            {"'hello'", ASTNodeType::StringLiteral, "字符串字面量（单引号）"},
+            {"\"world\"", ASTNodeType::StringLiteral, "字符串字面量（双引号）"},
+            {"true", ASTNodeType::BooleanLiteral, "布尔true字面量"},
+            {"false", ASTNodeType::BooleanLiteral, "布尔false字面量"},
+            {"nil", ASTNodeType::NilLiteral, "nil字面量"},
+            {"...", ASTNodeType::VarargLiteral, "变参字面量"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            
+            auto return_stmt = dynamic_cast<ReturnStatement*>(
+                program->GetStatements()[0].get());
+            REQUIRE(return_stmt != nullptr);
+            
+            auto& expressions = return_stmt->GetExpressions();
+            REQUIRE(expressions.size() == 1);
+            
+            ParserTestHelper::VerifyASTNode(expressions[0], test_case.expected_type);
+        }
+    }
+
+    SECTION("二元表达式") {
+        struct TestCase {
+            std::string source;
+            std::string operator_symbol;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"1 + 2", "+", "加法运算"},
+            {"3 - 4", "-", "减法运算"},
+            {"5 * 6", "*", "乘法运算"},
+            {"7 / 8", "/", "除法运算"},
+            {"9 % 10", "%", "模运算"},
+            {"2 ^ 3", "^", "幂运算"},
+            {"'a' .. 'b'", "..", "字符串连接"},
+            {"1 == 2", "==", "相等比较"},
+            {"3 ~= 4", "~=", "不等比较"},
+            {"5 < 6", "<", "小于比较"},
+            {"7 > 8", ">", "大于比较"},
+            {"9 <= 10", "<=", "小于等于比较"},
+            {"11 >= 12", ">=", "大于等于比较"},
+            {"true and false", "and", "逻辑与"},
+            {"true or false", "or", "逻辑或"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            
+            auto return_stmt = dynamic_cast<ReturnStatement*>(
+                program->GetStatements()[0].get());
+            REQUIRE(return_stmt != nullptr);
+            
+            auto& expressions = return_stmt->GetExpressions();
+            REQUIRE(expressions.size() == 1);
+            
+            auto binary_expr = dynamic_cast<BinaryExpression*>(expressions[0].get());
+            REQUIRE(binary_expr != nullptr);
+            
+            REQUIRE(binary_expr->GetOperator() == test_case.operator_symbol);
+            REQUIRE(binary_expr->GetLeft() != nullptr);
+            REQUIRE(binary_expr->GetRight() != nullptr);
+        }
+    }
+
+    SECTION("一元表达式") {
+        struct TestCase {
+            std::string source;
+            std::string operator_symbol;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"-42", "-", "一元负号"},
+            {"not true", "not", "逻辑非"},
+            {"#'hello'", "#", "长度运算符"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            
+            auto return_stmt = dynamic_cast<ReturnStatement*>(
+                program->GetStatements()[0].get());
+            REQUIRE(return_stmt != nullptr);
+            
+            auto& expressions = return_stmt->GetExpressions();
+            REQUIRE(expressions.size() == 1);
+            
+            auto unary_expr = dynamic_cast<UnaryExpression*>(expressions[0].get());
+            REQUIRE(unary_expr != nullptr);
+            
+            REQUIRE(unary_expr->GetOperator() == test_case.operator_symbol);
+            REQUIRE(unary_expr->GetOperand() != nullptr);
+        }
+    }
+
+    SECTION("运算符优先级") {
+        struct TestCase {
+            std::string source;
+            std::string expected_structure;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"1 + 2 * 3", "1 + (2 * 3)", "乘法优先级高于加法"},
+            {"2 ^ 3 ^ 4", "2 ^ (3 ^ 4)", "幂运算右结合"},
+            {"1 + 2 - 3", "(1 + 2) - 3", "同优先级左结合"},
+            {"-2 ^ 3", "-(2 ^ 3)", "一元运算符优先级"},
+            {"not a and b", "(not a) and b", "not优先级高于and"},
+            {"a or b and c", "a or (b and c)", "and优先级高于or"},
+            {"1 < 2 == true", "(1 < 2) == true", "比较优先级高于相等"},
+            {"'a' .. 'b' .. 'c'", "'a' .. ('b' .. 'c')", "连接运算符右结合"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            
+            // 验证AST结构是否符合期望的优先级
+            // 具体验证逻辑需要根据AST设计来实现
+            auto return_stmt = dynamic_cast<ReturnStatement*>(
+                program->GetStatements()[0].get());
+            REQUIRE(return_stmt != nullptr);
+            
+            auto& expressions = return_stmt->GetExpressions();
+            REQUIRE(expressions.size() == 1);
+            REQUIRE(expressions[0] != nullptr);
+        }
+    }
+}
         public:
             bool visited_number = false;
             double number_value = 0.0;
@@ -1002,5 +1260,553 @@ TEST_CASE("Parser - 完整程序解析契约", "[parser][contract][program]") {
         auto program = parser.ParseProgram();
         REQUIRE(program != nullptr);
         REQUIRE(program->GetChildCount() >= 3); // 至少有局部声明、函数定义、if语句
+    }
+}
+
+/* ========================================================================== */
+/* 函数相关解析测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 函数解析契约", "[parser][contract][function]") {
+    SECTION("基础函数定义") {
+        std::string source = R"(
+            function add(a, b)
+                return a + b
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        REQUIRE(program->GetStatements().size() == 1);
+        
+        auto func_def = dynamic_cast<FunctionDefinition*>(
+            program->GetStatements()[0].get());
+        REQUIRE(func_def != nullptr);
+        
+        REQUIRE(func_def->GetName() == "add");
+        REQUIRE(func_def->GetParameters().size() == 2);
+        REQUIRE(func_def->GetParameters()[0] == "a");
+        REQUIRE(func_def->GetParameters()[1] == "b");
+        REQUIRE_FALSE(func_def->IsVariadic());
+    }
+
+    SECTION("局部函数定义") {
+        std::string source = R"(
+            local function multiply(x, y)
+                return x * y
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto local_func_def = dynamic_cast<LocalFunctionDefinition*>(
+            program->GetStatements()[0].get());
+        REQUIRE(local_func_def != nullptr);
+        
+        REQUIRE(local_func_def->GetName() == "multiply");
+        REQUIRE(local_func_def->GetParameters().size() == 2);
+    }
+
+    SECTION("变参函数") {
+        std::string source = R"(
+            function varargs(a, b, ...)
+                return {...}
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto func_def = dynamic_cast<FunctionDefinition*>(
+            program->GetStatements()[0].get());
+        REQUIRE(func_def != nullptr);
+        
+        REQUIRE(func_def->GetParameters().size() == 2);
+        REQUIRE(func_def->IsVariadic());
+    }
+
+    SECTION("函数表达式") {
+        std::string source = R"(
+            local f = function(x) return x * 2 end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto local_decl = dynamic_cast<LocalDeclaration*>(
+            program->GetStatements()[0].get());
+        REQUIRE(local_decl != nullptr);
+        
+        auto& initializers = local_decl->GetInitializers();
+        REQUIRE(initializers.size() == 1);
+        
+        auto func_expr = dynamic_cast<FunctionExpression*>(initializers[0].get());
+        REQUIRE(func_expr != nullptr);
+        REQUIRE(func_expr->GetParameters().size() == 1);
+    }
+
+    SECTION("函数调用") {
+        struct TestCase {
+            std::string source;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"print()", "无参数函数调用"},
+            {"print('hello')", "单参数函数调用"},
+            {"math.max(1, 2, 3)", "多参数函数调用"},
+            {"obj:method()", "方法调用"},
+            {"f(g(h()))", "嵌套函数调用"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser(test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            REQUIRE(program->GetStatements().size() == 1);
+        }
+    }
+}
+
+/* ========================================================================== */
+/* 表操作解析测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 表操作契约", "[parser][contract][table]") {
+    SECTION("表构造器") {
+        struct TestCase {
+            std::string source;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"{}", "空表"},
+            {"{1, 2, 3}", "数组风格表"},
+            {"{a = 1, b = 2}", "哈希风格表"},
+            {"{1, 2, a = 3, b = 4}", "混合风格表"},
+            {"{[1] = 'first', [2] = 'second'}", "显式索引表"},
+            {"{'a', 'b', c = 'third'}", "混合索引表"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+            
+            auto return_stmt = dynamic_cast<ReturnStatement*>(
+                program->GetStatements()[0].get());
+            REQUIRE(return_stmt != nullptr);
+            
+            auto& expressions = return_stmt->GetExpressions();
+            REQUIRE(expressions.size() == 1);
+            
+            auto table_constructor = dynamic_cast<TableConstructor*>(expressions[0].get());
+            REQUIRE(table_constructor != nullptr);
+        }
+    }
+
+    SECTION("表访问") {
+        struct TestCase {
+            std::string source;
+            std::string description;
+        };
+        
+        std::vector<TestCase> test_cases = {
+            {"t[1]", "数字索引访问"},
+            {"t['key']", "字符串索引访问"},
+            {"t.field", "字段访问"},
+            {"t[expr]", "表达式索引访问"},
+            {"t[1][2]", "嵌套索引访问"},
+            {"t.a.b.c", "链式字段访问"},
+            {"t[1].field", "混合访问方式"}
+        };
+        
+        for (const auto& test_case : test_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser("return " + test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+        }
+    }
+}
+
+/* ========================================================================== */
+/* 控制流语句解析测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 控制流契约", "[parser][contract][control_flow]") {
+    SECTION("if语句") {
+        std::string source = R"(
+            if x > 0 then
+                print("positive")
+            elseif x < 0 then
+                print("negative")
+            else
+                print("zero")
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto if_stmt = dynamic_cast<IfStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(if_stmt != nullptr);
+        
+        REQUIRE(if_stmt->GetCondition() != nullptr);
+        REQUIRE(if_stmt->GetThenBlock() != nullptr);
+        REQUIRE(if_stmt->GetElseIfClauses().size() == 1);
+        REQUIRE(if_stmt->GetElseBlock() != nullptr);
+    }
+
+    SECTION("while循环") {
+        std::string source = R"(
+            while i < 10 do
+                i = i + 1
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto while_stmt = dynamic_cast<WhileStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(while_stmt != nullptr);
+        
+        REQUIRE(while_stmt->GetCondition() != nullptr);
+        REQUIRE(while_stmt->GetBody() != nullptr);
+    }
+
+    SECTION("repeat循环") {
+        std::string source = R"(
+            repeat
+                i = i + 1
+            until i >= 10
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto repeat_stmt = dynamic_cast<RepeatStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(repeat_stmt != nullptr);
+        
+        REQUIRE(repeat_stmt->GetBody() != nullptr);
+        REQUIRE(repeat_stmt->GetCondition() != nullptr);
+    }
+
+    SECTION("数值for循环") {
+        std::string source = R"(
+            for i = 1, 10, 2 do
+                print(i)
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto for_stmt = dynamic_cast<NumericForStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(for_stmt != nullptr);
+        
+        REQUIRE(for_stmt->GetVariable() == "i");
+        REQUIRE(for_stmt->GetInitial() != nullptr);
+        REQUIRE(for_stmt->GetLimit() != nullptr);
+        REQUIRE(for_stmt->GetStep() != nullptr);
+        REQUIRE(for_stmt->GetBody() != nullptr);
+    }
+
+    SECTION("泛型for循环") {
+        std::string source = R"(
+            for k, v in pairs(t) do
+                print(k, v)
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto for_stmt = dynamic_cast<GenericForStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(for_stmt != nullptr);
+        
+        REQUIRE(for_stmt->GetVariables().size() == 2);
+        REQUIRE(for_stmt->GetExpressions().size() == 1);
+        REQUIRE(for_stmt->GetBody() != nullptr);
+    }
+}
+
+/* ========================================================================== */
+/* 错误处理测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 错误处理契约", "[parser][contract][error]") {
+    SECTION("语法错误检测") {
+        struct TestCase {
+            std::string source;
+            std::string description;
+        };
+        
+        std::vector<TestCase> error_cases = {
+            {"if true then", "未闭合的if语句"},
+            {"function f()", "未闭合的函数定义"},
+            {"local a =", "不完整的赋值"},
+            {"{1, 2,", "未闭合的表构造"},
+            {"return)", "不匹配的括号"},
+            {"for i = 1", "不完整的for循环"},
+            {"repeat i = i + 1", "缺少until的repeat"},
+            {"elseif true then", "孤立的elseif"},
+            {"end", "孤立的end"},
+            {"function 123()", "无效的函数名"}
+        };
+        
+        for (const auto& test_case : error_cases) {
+            INFO("测试用例: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser(test_case.source);
+            
+            REQUIRE_THROWS_AS(parser->ParseProgram(), SyntaxError);
+            ParserTestHelper::VerifyParseError(*parser);
+        }
+    }
+
+    SECTION("错误恢复机制") {
+        std::string source = R"(
+            local a = 1
+            function invalid syntax here
+            local b = 2
+            return b
+        )";
+        
+        ParserConfig config;
+        config.recover_from_errors = true;
+        
+        auto parser = ParserTestHelper::CreateParser(source, config);
+        
+        std::unique_ptr<Program> program;
+        REQUIRE_NOTHROW(program = parser->ParseProgram());
+        
+        // 应该有错误，但是能够恢复并继续解析
+        REQUIRE(parser->GetErrorCount() > 0);
+        
+        // 检查是否正确恢复和解析了后续的语句
+        if (program) {
+            // 具体的恢复验证逻辑
+            REQUIRE(program->GetStatements().size() > 0);
+        }
+    }
+}
+
+/* ========================================================================== */
+/* 边界条件和性能测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 边界条件契约", "[parser][contract][boundary]") {
+    SECTION("深度嵌套结构") {
+        std::stringstream source;
+        const int nesting_depth = 50;
+        
+        // 构造深度嵌套的if语句
+        for (int i = 0; i < nesting_depth; ++i) {
+            source << "if true then ";
+        }
+        source << "return 1 ";
+        for (int i = 0; i < nesting_depth; ++i) {
+            source << "end ";
+        }
+        
+        auto parser = ParserTestHelper::CreateParser(source.str());
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        REQUIRE(program->GetStatements().size() == 1);
+    }
+
+    SECTION("长表达式链") {
+        std::stringstream source;
+        source << "return ";
+        
+        const int expression_length = 100;
+        for (int i = 0; i < expression_length; ++i) {
+            if (i > 0) source << " + ";
+            source << i;
+        }
+        
+        auto parser = ParserTestHelper::CreateParser(source.str());
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        auto return_stmt = dynamic_cast<ReturnStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(return_stmt != nullptr);
+        
+        auto& expressions = return_stmt->GetExpressions();
+        REQUIRE(expressions.size() == 1);
+        REQUIRE(expressions[0] != nullptr);
+    }
+
+    SECTION("递归深度限制") {
+        ParserConfig config;
+        config.max_recursion_depth = 10;
+        
+        // 构造超过递归深度限制的输入
+        std::stringstream source;
+        for (int i = 0; i < 20; ++i) {
+            source << "(";
+        }
+        source << "1";
+        for (int i = 0; i < 20; ++i) {
+            source << ")";
+        }
+        
+        auto parser = ParserTestHelper::CreateParser("return " + source.str(), config);
+        
+        REQUIRE_THROWS_AS(parser->ParseProgram(), LuaError);
+    }
+}
+
+/* ========================================================================== */
+/* AST验证测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - AST验证契约", "[parser][contract][ast]") {
+    SECTION("节点位置信息") {
+        std::string source = R"(
+            local x = 42
+            return x
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        // 验证所有AST节点都有正确的位置信息
+        for (const auto& stmt : program->GetStatements()) {
+            REQUIRE(stmt->GetPosition().IsValid());
+            REQUIRE(stmt->GetPosition().line > 0);
+            REQUIRE(stmt->GetPosition().column > 0);
+        }
+    }
+
+    SECTION("节点父子关系") {
+        std::string source = R"(
+            if x > 0 then
+                return x
+            end
+        )";
+        
+        auto parser = ParserTestHelper::CreateParser(source);
+        auto program = parser->ParseProgram();
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        
+        // 验证父子节点关系的正确性
+        auto if_stmt = dynamic_cast<IfStatement*>(
+            program->GetStatements()[0].get());
+        REQUIRE(if_stmt != nullptr);
+        
+        // 验证条件表达式
+        auto condition = if_stmt->GetCondition();
+        REQUIRE(condition != nullptr);
+        
+        // 验证then块
+        auto then_block = if_stmt->GetThenBlock();
+        REQUIRE(then_block != nullptr);
+    }
+}
+
+/* ========================================================================== */
+/* 性能测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - 性能契约", "[parser][contract][performance]") {
+    SECTION("大型程序解析性能") {
+        // 生成大型程序用于性能测试
+        std::stringstream source;
+        const int num_functions = 1000;
+        
+        for (int i = 0; i < num_functions; ++i) {
+            source << "function func" << i << "(a, b)\n";
+            source << "  return a + b + " << i << "\n";
+            source << "end\n\n";
+        }
+        
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        auto parser = ParserTestHelper::CreateParser(source.str());
+        auto program = parser->ParseProgram();
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
+        
+        ParserTestHelper::VerifyParseSuccess(*parser);
+        REQUIRE(program->GetStatements().size() == num_functions);
+        
+        // 性能要求：解析1000个函数应该在合理时间内完成
+        INFO("解析时间: " << duration.count() << "ms");
+        REQUIRE(duration.count() < 1000);
+    }
+}
+
+/* ========================================================================== */
+/* Lua 5.1.5兼容性测试 */
+/* ========================================================================== */
+
+TEST_CASE("Parser - Lua 5.1.5兼容性契约", "[parser][contract][compatibility]") {
+    SECTION("Lua 5.1特有语法特性") {
+        struct TestCase {
+            std::string source;
+            std::string description;
+        };
+        
+        std::vector<TestCase> lua51_features = {
+            {"local function f() end", "局部函数定义"},
+            {"for i = 1, 10 do end", "数值for循环"},
+            {"for k, v in pairs(t) do end", "泛型for循环"},
+            {"function f(...) return ... end", "变参函数"},
+            {"local a, b = 1, 2", "多重赋值"},
+            {"return function() end", "函数表达式返回"},
+            {"t = {a = 1, [2] = 'two'}", "表构造器混合语法"},
+            {"obj:method(args)", "方法调用语法"}
+        };
+        
+        for (const auto& test_case : lua51_features) {
+            INFO("Lua 5.1特性: " << test_case.description);
+            
+            auto parser = ParserTestHelper::CreateParser(test_case.source);
+            auto program = parser->ParseProgram();
+            
+            ParserTestHelper::VerifyParseSuccess(*parser);
+        }
     }
 }

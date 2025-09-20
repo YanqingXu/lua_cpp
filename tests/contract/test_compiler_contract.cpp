@@ -912,3 +912,788 @@ TEST_CASE("Compiler - 完整程序编译契约", "[compiler][contract][program]"
         REQUIRE(found_return);
     }
 }
+
+/* ========================================================================== */
+/* 寄存器分配管理契约 */
+/* ========================================================================== */
+
+TEST_CASE("RegisterManager - 寄存器分配契约", "[compiler][contract][register]") {
+    SECTION("基础寄存器分配") {
+        RegisterManager rm;
+        
+        RegisterIndex reg1 = rm.AllocateRegister();
+        RegisterIndex reg2 = rm.AllocateRegister();
+        RegisterIndex reg3 = rm.AllocateRegister();
+        
+        REQUIRE(reg1 == 0);
+        REQUIRE(reg2 == 1);
+        REQUIRE(reg3 == 2);
+        REQUIRE(rm.GetActiveRegisterCount() == 3);
+    }
+
+    SECTION("寄存器释放和重用") {
+        RegisterManager rm;
+        
+        RegisterIndex reg1 = rm.AllocateRegister();
+        RegisterIndex reg2 = rm.AllocateRegister();
+        RegisterIndex reg3 = rm.AllocateRegister();
+        
+        // 释放中间寄存器
+        rm.FreeRegister(reg2);
+        REQUIRE(rm.GetActiveRegisterCount() == 2);
+        
+        // 新分配应该重用释放的寄存器
+        RegisterIndex reg4 = rm.AllocateRegister();
+        REQUIRE(reg4 == reg2); // 重用已释放的寄存器
+    }
+
+    SECTION("寄存器生命周期管理") {
+        RegisterManager rm;
+        
+        // 创建作用域
+        auto scope = rm.CreateScope();
+        
+        RegisterIndex reg1 = rm.AllocateRegister();
+        RegisterIndex reg2 = rm.AllocateRegister();
+        
+        REQUIRE(rm.GetActiveRegisterCount() == 2);
+        
+        // 离开作用域，寄存器应该自动释放
+        scope.reset();
+        REQUIRE(rm.GetActiveRegisterCount() == 0);
+    }
+
+    SECTION("寄存器溢出检测") {
+        RegisterManager rm;
+        
+        // 分配到寄存器上限
+        for (int i = 0; i < MAX_REGISTERS; ++i) {
+            RegisterIndex reg = rm.AllocateRegister();
+            REQUIRE(reg == i);
+        }
+        
+        // 尝试分配超出上限
+        REQUIRE_THROWS_AS(rm.AllocateRegister(), CompilerError);
+    }
+
+    SECTION("固定寄存器预留") {
+        RegisterManager rm;
+        
+        // 预留前3个寄存器用于函数参数
+        rm.ReserveRegisters(3);
+        
+        RegisterIndex reg = rm.AllocateRegister();
+        REQUIRE(reg == 3); // 从预留后开始分配
+    }
+}
+
+/* ========================================================================== */
+/* Upvalue和闭包契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - Upvalue处理契约", "[compiler][contract][upvalue]") {
+    SECTION("简单upvalue捕获") {
+        std::string source = R"(
+            local x = 10
+            function f()
+                return x  -- 捕获外部变量
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        REQUIRE(main_proto != nullptr);
+        REQUIRE(main_proto->GetProtos().size() == 1);
+        
+        auto& sub_proto = main_proto->GetSubProto(0);
+        REQUIRE(sub_proto->GetUpvalues().size() == 1);
+        
+        auto& upvalue = sub_proto->GetUpvalue(0);
+        REQUIRE(upvalue.name == "x");
+        REQUIRE(upvalue.is_local == true);
+        REQUIRE(upvalue.index == 0); // x是第一个局部变量
+    }
+
+    SECTION("嵌套upvalue捕获") {
+        std::string source = R"(
+            local x = 10
+            function outer()
+                local y = 20
+                function inner()
+                    return x + y  -- 捕获多层外部变量
+                end
+                return inner
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        // 验证嵌套upvalue结构
+        REQUIRE(main_proto->GetProtos().size() == 1);
+        auto& outer_proto = main_proto->GetSubProto(0);
+        REQUIRE(outer_proto->GetProtos().size() == 1);
+        auto& inner_proto = outer_proto->GetSubProto(0);
+        
+        REQUIRE(inner_proto->GetUpvalues().size() == 2);
+        // x应该是从main捕获，y应该是从outer捕获
+    }
+
+    SECTION("upvalue指令生成") {
+        Compiler compiler;
+        
+        // 模拟upvalue访问
+        compiler.PushScope();
+        compiler.DeclareLocalVariable("x");
+        
+        compiler.PushScope(); // 内部函数作用域
+        auto var_expr = std::make_unique<Identifier>("x");
+        ExpressionContext ctx = compiler.CompileExpression(var_expr.get());
+        
+        REQUIRE(ctx.type == ExpressionType::Upvalue);
+        
+        // 应该生成GETUPVAL指令
+        auto& code = compiler.GetCurrentFunction()->GetCode();
+        REQUIRE_FALSE(code.empty());
+        REQUIRE(GetOpCode(code.back()) == OpCode::GETUPVAL);
+        
+        compiler.PopScope();
+        compiler.PopScope();
+    }
+}
+
+TEST_CASE("Compiler - 闭包创建契约", "[compiler][contract][closure]") {
+    SECTION("闭包指令生成") {
+        std::string source = R"(
+            local x = 10
+            local f = function() return x end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        // 应该生成CLOSURE指令
+        auto& code = main_proto->GetCode();
+        bool found_closure = false;
+        for (auto inst : code) {
+            if (GetOpCode(inst) == OpCode::CLOSURE) {
+                found_closure = true;
+                break;
+            }
+        }
+        REQUIRE(found_closure);
+    }
+
+    SECTION("upvalue初始化指令") {
+        Compiler compiler;
+        
+        // 编译包含upvalue的闭包创建
+        compiler.PushScope();
+        RegisterIndex var_reg = compiler.DeclareLocalVariable("x");
+        
+        // 创建子函数
+        auto sub_proto = std::make_unique<Proto>();
+        sub_proto->AddUpvalue(UpvalueDesc{"x", true, var_reg});
+        
+        Size proto_idx = compiler.GetCurrentFunction()->AddSubProto(std::move(sub_proto));
+        RegisterIndex closure_reg = compiler.GetRegisterManager().AllocateRegister();
+        
+        // 生成闭包创建指令
+        compiler.EmitClosure(closure_reg, proto_idx);
+        
+        auto& code = compiler.GetCurrentFunction()->GetCode();
+        REQUIRE_FALSE(code.empty());
+        
+        // 应该有CLOSURE指令和MOVE/GETUPVAL指令来初始化upvalue
+        bool found_closure = false;
+        for (auto inst : code) {
+            if (GetOpCode(inst) == OpCode::CLOSURE) {
+                found_closure = true;
+                break;
+            }
+        }
+        REQUIRE(found_closure);
+        
+        compiler.PopScope();
+    }
+}
+
+/* ========================================================================== */
+/* 控制流编译契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - 循环语句契约", "[compiler][contract][loops]") {
+    SECTION("while循环编译") {
+        std::string source = R"(
+            local i = 0
+            while i < 10 do
+                i = i + 1
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& code = main_proto->GetCode();
+        
+        // 应该有条件跳转指令和无条件跳转指令
+        bool found_test = false;
+        bool found_jmp = false;
+        
+        for (auto inst : code) {
+            OpCode op = GetOpCode(inst);
+            if (op == OpCode::TEST || op == OpCode::TESTSET) {
+                found_test = true;
+            }
+            if (op == OpCode::JMP) {
+                found_jmp = true;
+            }
+        }
+        
+        REQUIRE(found_test); // 循环条件测试
+        REQUIRE(found_jmp);  // 循环跳转
+    }
+
+    SECTION("for循环编译") {
+        std::string source = R"(
+            for i = 1, 10 do
+                print(i)
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& code = main_proto->GetCode();
+        
+        // 应该有FORPREP和FORLOOP指令
+        bool found_forprep = false;
+        bool found_forloop = false;
+        
+        for (auto inst : code) {
+            OpCode op = GetOpCode(inst);
+            if (op == OpCode::FORPREP) {
+                found_forprep = true;
+            }
+            if (op == OpCode::FORLOOP) {
+                found_forloop = true;
+            }
+        }
+        
+        REQUIRE(found_forprep);
+        REQUIRE(found_forloop);
+    }
+
+    SECTION("break和continue处理") {
+        Compiler compiler;
+        
+        // 进入循环作用域
+        auto loop_scope = compiler.EnterLoopScope();
+        
+        // 编译break语句
+        auto break_stmt = std::make_unique<BreakStatement>();
+        compiler.CompileStatement(break_stmt.get());
+        
+        // 应该生成条件跳转到循环结束
+        auto& break_jumps = loop_scope->GetBreakJumps();
+        REQUIRE_FALSE(break_jumps.empty());
+        
+        // 离开循环作用域时应该修正所有跳转地址
+        compiler.ExitLoopScope(std::move(loop_scope));
+    }
+}
+
+TEST_CASE("Compiler - 条件语句契约", "[compiler][contract][conditionals]") {
+    SECTION("if-else语句编译") {
+        std::string source = R"(
+            local x = 10
+            if x > 5 then
+                print("big")
+            else
+                print("small")
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& code = main_proto->GetCode();
+        
+        // 应该有条件测试和跳转指令
+        bool found_test = false;
+        bool found_jmp = false;
+        
+        for (auto inst : code) {
+            OpCode op = GetOpCode(inst);
+            if (op == OpCode::TEST || op == OpCode::TESTSET || op == OpCode::LT) {
+                found_test = true;
+            }
+            if (op == OpCode::JMP) {
+                found_jmp = true;
+            }
+        }
+        
+        REQUIRE(found_test);
+        REQUIRE(found_jmp);
+    }
+
+    SECTION("elseif链编译") {
+        std::string source = R"(
+            local x = 10
+            if x < 5 then
+                print("small")
+            elseif x < 10 then
+                print("medium")  
+            elseif x < 15 then
+                print("large")
+            else
+                print("huge")
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& code = main_proto->GetCode();
+        
+        // 应该有多个条件测试和跳转指令
+        int test_count = 0;
+        int jmp_count = 0;
+        
+        for (auto inst : code) {
+            OpCode op = GetOpCode(inst);
+            if (op == OpCode::TEST || op == OpCode::TESTSET || op == OpCode::LT) {
+                test_count++;
+            }
+            if (op == OpCode::JMP) {
+                jmp_count++;
+            }
+        }
+        
+        REQUIRE(test_count >= 3); // 至少3个条件测试
+        REQUIRE(jmp_count >= 3);  // 至少3个跳转
+    }
+}
+
+/* ========================================================================== */
+/* 错误处理和诊断契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - 错误处理契约", "[compiler][contract][errors]") {
+    SECTION("语法错误检测") {
+        std::string invalid_source = R"(
+            local x = 
+        )"; // 不完整的赋值语句
+        
+        auto lexer = std::make_unique<Lexer>(invalid_source, "test.lua");
+        Parser parser(std::move(lexer));
+        
+        REQUIRE_THROWS_AS(parser.ParseProgram(), SyntaxError);
+    }
+
+    SECTION("编译时错误检测") {
+        SECTION("未定义变量访问") {
+            Compiler compiler;
+            auto var_expr = std::make_unique<Identifier>("undefined_var");
+            
+            // 在严格模式下应该抛出错误
+            if (compiler.IsStrictMode()) {
+                REQUIRE_THROWS_AS(compiler.CompileExpression(var_expr.get()), CompilerError);
+            }
+        }
+
+        SECTION("重复局部变量声明") {
+            Compiler compiler;
+            
+            compiler.DeclareLocalVariable("x");
+            REQUIRE_THROWS_AS(compiler.DeclareLocalVariable("x"), CompilerError);
+        }
+
+        SECTION("break语句在非循环中") {
+            Compiler compiler;
+            auto break_stmt = std::make_unique<BreakStatement>();
+            
+            REQUIRE_THROWS_AS(compiler.CompileStatement(break_stmt.get()), CompilerError);
+        }
+    }
+
+    SECTION("错误恢复机制") {
+        Compiler compiler;
+        compiler.EnableErrorRecovery(true);
+        
+        // 即使有错误也应该尽可能继续编译
+        std::string source_with_errors = R"(
+            local x = 10
+            undefinedFunction() -- 错误：未定义函数
+            local y = 20        -- 应该能继续编译
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source_with_errors, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        // 应该有编译错误但仍能产生字节码
+        REQUIRE(main_proto != nullptr);
+        REQUIRE(compiler.GetErrorCount() > 0);
+    }
+
+    SECTION("诊断信息质量") {
+        Compiler compiler;
+        
+        try {
+            compiler.DeclareLocalVariable("x");
+            compiler.DeclareLocalVariable("x"); // 重复声明
+        }
+        catch (const CompilerError& e) {
+            // 错误信息应该包含变量名和位置信息
+            std::string msg = e.what();
+            REQUIRE(msg.find("x") != std::string::npos);
+            REQUIRE(e.GetLineNumber() > 0);
+            REQUIRE(!e.GetFileName().empty());
+        }
+    }
+}
+
+/* ========================================================================== */
+/* 高级优化契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - 高级优化契约", "[compiler][contract][optimization]") {
+    SECTION("尾调用优化") {
+        std::string source = R"(
+            function factorial(n, acc)
+                if n <= 1 then
+                    return acc
+                else
+                    return factorial(n-1, n*acc) -- 尾调用
+                end
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        compiler.EnableOptimization(OptimizationType::TailCall);
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& sub_proto = main_proto->GetSubProto(0);
+        auto& code = sub_proto->GetCode();
+        
+        // 尾调用应该使用TAILCALL指令而不是CALL+RETURN
+        bool found_tailcall = false;
+        for (auto inst : code) {
+            if (GetOpCode(inst) == OpCode::TAILCALL) {
+                found_tailcall = true;
+                break;
+            }
+        }
+        
+        if (compiler.IsOptimizationEnabled(OptimizationType::TailCall)) {
+            REQUIRE(found_tailcall);
+        }
+    }
+
+    SECTION("局部变量合并优化") {
+        std::string source = R"(
+            local function test()
+                local a = 1
+                local b = a + 2
+                return b
+            end
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        compiler.EnableOptimization(OptimizationType::RegisterCoalescing);
+        auto main_proto = compiler.CompileProgram(program.get());
+        
+        auto& sub_proto = main_proto->GetSubProto(0);
+        
+        // 优化后寄存器使用应该更少
+        if (compiler.IsOptimizationEnabled(OptimizationType::RegisterCoalescing)) {
+            REQUIRE(sub_proto->GetMaxStackSize() <= 3); // a和b可能共享寄存器
+        }
+    }
+
+    SECTION("跳转优化") {
+        Compiler compiler;
+        compiler.EnableOptimization(OptimizationType::JumpOptimization);
+        
+        // 编译连续的条件跳转
+        RegisterIndex reg = compiler.GetRegisterManager().AllocateRegister();
+        
+        JumpList jump1 = compiler.EmitJump(OpCode::JMP, 0);
+        JumpList jump2 = compiler.EmitJump(OpCode::JMP, 0);
+        
+        // 修正跳转地址
+        compiler.PatchListToHere(jump1);
+        compiler.PatchListToHere(jump2);
+        
+        auto& code = compiler.GetCurrentFunction()->GetCode();
+        
+        // 跳转优化可能会合并连续的无条件跳转
+        if (compiler.IsOptimizationEnabled(OptimizationType::JumpOptimization)) {
+            // 验证优化结果（具体检查依赖实现）
+            REQUIRE_FALSE(code.empty());
+        }
+    }
+}
+
+/* ========================================================================== */
+/* 内存管理契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - 内存管理契约", "[compiler][contract][memory]") {
+    SECTION("编译器内存使用") {
+        Compiler compiler;
+        
+        size_t initial_memory = compiler.GetMemoryUsage();
+        
+        // 编译大量代码
+        for (int i = 0; i < 1000; ++i) {
+            auto expr = std::make_unique<NumberLiteral>(i);
+            compiler.CompileExpression(expr.get());
+        }
+        
+        size_t peak_memory = compiler.GetMemoryUsage();
+        REQUIRE(peak_memory > initial_memory);
+        
+        // 清理编译器状态
+        compiler.Reset();
+        
+        size_t final_memory = compiler.GetMemoryUsage();
+        REQUIRE(final_memory <= initial_memory + 1024); // 允许少量内存增长
+    }
+
+    SECTION("Proto内存管理") {
+        auto proto = std::make_unique<Proto>();
+        
+        // 添加大量数据
+        for (int i = 0; i < 10000; ++i) {
+            proto->AddConstant(LuaValue::CreateNumber(i));
+            proto->AddInstruction(CreateABCInstruction(OpCode::LOADK, 0, i, 0));
+        }
+        
+        size_t memory_usage = proto->GetMemoryUsage();
+        REQUIRE(memory_usage > 0);
+        
+        // 移动构造不应该增加内存使用
+        auto moved_proto = std::move(proto);
+        REQUIRE(moved_proto->GetMemoryUsage() == memory_usage);
+    }
+
+    SECTION("字符串常量去重") {
+        Compiler compiler;
+        
+        // 添加重复的字符串常量
+        auto str1 = std::make_unique<StringLiteral>("hello");
+        auto str2 = std::make_unique<StringLiteral>("hello");
+        auto str3 = std::make_unique<StringLiteral>("world");
+        
+        ExpressionContext ctx1 = compiler.CompileExpression(str1.get());
+        ExpressionContext ctx2 = compiler.CompileExpression(str2.get());
+        ExpressionContext ctx3 = compiler.CompileExpression(str3.get());
+        
+        // 相同字符串应该共享常量表条目
+        REQUIRE(ctx1.constant_index == ctx2.constant_index);
+        REQUIRE(ctx1.constant_index != ctx3.constant_index);
+        
+        auto& constants = compiler.GetCurrentFunction()->GetConstants();
+        REQUIRE(constants.size() == 2); // 只有"hello"和"world"两个常量
+    }
+}
+
+/* ========================================================================== */
+/* Lua 5.1.5兼容性验证契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - Lua 5.1.5兼容性契约", "[compiler][contract][compatibility]") {
+    SECTION("字节码格式兼容性") {
+        std::string source = R"(
+            local x = 42
+            return x + 1
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "test.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto proto = compiler.CompileProgram(program.get());
+        
+        // 验证字节码格式与Lua 5.1.5完全一致
+        auto& code = proto->GetCode();
+        REQUIRE_FALSE(code.empty());
+        
+        // 第一条指令应该是LOADK
+        REQUIRE(GetOpCode(code[0]) == OpCode::LOADK);
+        REQUIRE(GetArgA(code[0]) == 0); // 加载到寄存器0
+        
+        // 验证常量表
+        auto& constants = proto->GetConstants();
+        REQUIRE(constants.size() >= 2); // 42和1
+        REQUIRE(constants[0].GetNumber() == Approx(42.0));
+    }
+
+    SECTION("指令参数范围验证") {
+        Compiler compiler;
+        
+        // 测试参数范围边界
+        REQUIRE_NOTHROW(CreateABCInstruction(OpCode::MOVE, 0, 0, 0));
+        REQUIRE_NOTHROW(CreateABCInstruction(OpCode::MOVE, 255, 511, 511));
+        
+        // 超出范围应该抛出异常
+        REQUIRE_THROWS_AS(CreateABCInstruction(OpCode::MOVE, 256, 0, 0), CompilerError);
+        REQUIRE_THROWS_AS(CreateABxInstruction(OpCode::LOADK, 0, 262144), CompilerError);
+    }
+
+    SECTION("Upvalue数量限制") {
+        Compiler compiler;
+        auto proto = std::make_unique<Proto>();
+        
+        // Lua 5.1.5限制每个函数最多255个upvalue
+        for (int i = 0; i < 255; ++i) {
+            proto->AddUpvalue(UpvalueDesc{
+                .name = "upval" + std::to_string(i),
+                .is_local = true,
+                .index = static_cast<RegisterIndex>(i)
+            });
+        }
+        
+        REQUIRE(proto->GetUpvalues().size() == 255);
+        
+        // 超出限制应该抛出异常
+        REQUIRE_THROWS_AS(
+            proto->AddUpvalue(UpvalueDesc{"overflow", true, 255}),
+            CompilerError
+        );
+    }
+
+    SECTION("局部变量数量限制") {
+        Compiler compiler;
+        
+        // Lua 5.1.5限制每个函数最多200个局部变量
+        for (int i = 0; i < 200; ++i) {
+            REQUIRE_NOTHROW(compiler.DeclareLocalVariable("var" + std::to_string(i)));
+        }
+        
+        // 超出限制应该抛出异常
+        REQUIRE_THROWS_AS(compiler.DeclareLocalVariable("overflow"), CompilerError);
+    }
+}
+
+/* ========================================================================== */
+/* 性能基准测试契约 */
+/* ========================================================================== */
+
+TEST_CASE("Compiler - 性能基准契约", "[compiler][contract][performance]") {
+    SECTION("编译速度基准") {
+        // 大型程序编译性能测试
+        std::string large_source;
+        for (int i = 0; i < 1000; ++i) {
+            large_source += "local var" + std::to_string(i) + " = " + std::to_string(i) + "\n";
+        }
+        large_source += "return var999\n";
+        
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        auto lexer = std::make_unique<Lexer>(large_source, "large.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto proto = compiler.CompileProgram(program.get());
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        // 编译1000行代码应该在合理时间内完成（小于1秒）
+        REQUIRE(duration.count() < 1000);
+        REQUIRE(proto != nullptr);
+    }
+
+    SECTION("内存效率基准") {
+        Compiler compiler;
+        
+        size_t initial_memory = compiler.GetMemoryUsage();
+        
+        // 编译包含大量常量的程序
+        for (int i = 0; i < 10000; ++i) {
+            auto expr = std::make_unique<NumberLiteral>(i);
+            compiler.CompileExpression(expr.get());
+        }
+        
+        size_t peak_memory = compiler.GetMemoryUsage();
+        size_t memory_growth = peak_memory - initial_memory;
+        
+        // 内存增长应该是合理的（每个常量不超过100字节）
+        REQUIRE(memory_growth < 10000 * 100);
+        
+        // 常量去重应该生效
+        auto& constants = compiler.GetCurrentFunction()->GetConstants();
+        REQUIRE(constants.size() == 10000); // 没有重复常量
+    }
+
+    SECTION("字节码大小效率") {
+        std::string source = R"(
+            local function fibonacci(n)
+                if n <= 1 then
+                    return n
+                else
+                    return fibonacci(n-1) + fibonacci(n-2)
+                end
+            end
+            return fibonacci(10)
+        )";
+        
+        auto lexer = std::make_unique<Lexer>(source, "fib.lua");
+        Parser parser(std::move(lexer));
+        auto program = parser.ParseProgram();
+        
+        Compiler compiler;
+        auto proto = compiler.CompileProgram(program.get());
+        
+        // 字节码大小应该合理
+        size_t bytecode_size = proto->GetCode().size() * sizeof(Instruction);
+        REQUIRE(bytecode_size < 1024); // 简单递归函数应该小于1KB
+        
+        // 常量表应该高效
+        REQUIRE(proto->GetConstants().size() < 10);
+    }
+}

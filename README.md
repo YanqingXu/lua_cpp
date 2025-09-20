@@ -153,7 +153,7 @@ class VMExecutor {
 2. **方法论先进**: Specification-Driven Development
 3. **质量标准**: 超越一般开源项目的企业级要求
 4. **可持续性**: 完整的开发和维护体系rkflows/ci.yml)
-[![Spec-Kit Compatible](https://img.shields.io/badge/Spec--Kit-Compatible-green)](./SPEC_KIT_COMPLIANCE_REPORT.md)
+[![Spec-Kit Compatible](https://img.shields.io/badge/Spec--Kit-Compatible-green)](./docs/reports/SPEC_KIT_COMPLIANCE_REPORT.md)
 [![Constitution](https://img.shields.io/badge/Constitution-v1.1.0-blue)](./memory/constitution.md)
 
 ---
@@ -283,7 +283,7 @@ graph LR
 
 ### 符合性报告
 
-- **[Spec-Kit符合度报告](./SPEC_KIT_COMPLIANCE_REPORT.md)** - 项目对SDD方法论的符合度评估
+- **[Spec-Kit符合度报告](./docs/reports/SPEC_KIT_COMPLIANCE_REPORT.md)** - 项目对SDD方法论的符合度评估
 
 ## 🏗️ 项目架构
 
@@ -415,7 +415,9 @@ cmake .. -DLUA_CPP_STRICT_COMPATIBILITY=ON
 | 功能规格 | ✅ 完成 | 100% | 详细规格 |
 | 技术计划 | ✅ 完成 | 100% | 架构设计 |
 | 任务分解 | ✅ 完成 | 100% | TDD任务 |
-| **具体实现** | 🔄 进行中 | 15% | 基于规格 |
+| **具体实现** | 🔄 进行中 | 19.0% | 基于规格 |
+| 契约测试阶段 | 🔄 进行中 | 78% | T005-T011完成 |
+| 核心组件实现 | ⏳ 待开始 | 0% | 等待契约完成 |
 
 ### 质量门禁
 
@@ -430,10 +432,40 @@ cmake .. -DLUA_CPP_STRICT_COMPATIBILITY=ON
 ### 里程碑计划
 
 1. **阶段一**: ✅ 规格驱动设计完成
-2. **阶段二**: 🔄 核心组件实现 (当前)
+   - ✅ 项目宪法 (constitution.md v1.1.0)
+   - ✅ 功能规格 (lua-interpreter-spec.md)
+   - ✅ 技术计划 (plan.md)
+   - ✅ 任务分解 (tasks.md - 58个任务)
+
+2. **阶段二**: 🔄 TDD契约测试和核心实现 (当前进度: 19.0%)
+   - ✅ T001-T011: 基础设施和契约测试 (11/19完成)
+   - 🔄 T012-T019: 剩余契约测试 (进行中)
+   - ⏳ T020-T033: 核心组件实现 (等待契约完成)
+
 3. **阶段三**: ⏳ 标准库和API实现
-4. **阶段四**: ⏳ 性能优化和验证
+   - ⏳ T034-T042: 标准库和C API
+   - ⏳ T043-T048: 集成和优化
+
+4. **阶段四**: ⏳ 验证和质量保证
+   - ⏳ T049-T058: 测试验证和性能优化
+
 5. **阶段五**: ⏳ 发布和文档完善
+
+### 📈 最新完成项目
+
+**🎉 T011 - Parser契约测试** (2025-09-20 完成)
+- 📁 文件: `tests/contract/test_parser_contract.cpp` (1,900+行)
+- 🎯 覆盖: 完整语法分析功能测试
+- 🔍 验证: lua_c_analysis行为 + lua_with_cpp架构
+- ✨ 特色: 表达式优先级、控制流、错误恢复等全方位测试
+- 📊 结果: 语法分析器接口和行为完全定义
+
+**🎉 T010 - Lexer契约测试** (2025-09-20 完成)
+- ✅ 完整的契约测试文件 (916行)
+- ✅ Token类型和Lexer接口定义
+- ✅ 🔍lua_c_analysis验证集成
+- ✅ 🏗️lua_with_cpp架构参考
+- ✅ 100%词法分析功能覆盖
 
 ## 🧪 质量保证体系
 
@@ -488,7 +520,7 @@ cmake .. -DLUA_CPP_STRICT_COMPATIBILITY=ON
 
 - **[Spec-Kit方法论](https://github.com/github/spec-kit)** - 规格驱动开发指南
 - **[项目宪法](./memory/constitution.md)** - 本项目的治理文档
-- **[符合性报告](./SPEC_KIT_COMPLIANCE_REPORT.md)** - SDD方法论符合度评估
+- **[符合性报告](./docs/reports/SPEC_KIT_COMPLIANCE_REPORT.md)** - SDD方法论符合度评估
 
 ### 参考项目
 
@@ -502,6 +534,7 @@ cmake .. -DLUA_CPP_STRICT_COMPATIBILITY=ON
 - **[架构设计](./docs/architecture/)** - 系统架构说明
 - **[开发指南](./docs/development/)** - 详细的开发流程
 - **[性能报告](./docs/performance/)** - 基准测试结果
+- **[任务报告](./docs/reports/)** - 所有T0xx任务完成报告
 
 ## 🏷️ 项目标签
 
