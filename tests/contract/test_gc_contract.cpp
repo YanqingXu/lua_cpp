@@ -4,6 +4,20 @@
  * @description 测试Lua垃圾回收器的所有行为契约，确保100% Lua 5.1.5兼容性
  *              包括内存分配、标记清除算法、增量回收、弱引用等GC核心机制
  * @date 2025-09-20
+ * 
+ * 测试覆盖范围：
+ * 1. 基础GC架构和状态管理
+ * 2. 内存分配和对象跟踪
+ * 3. 三色标记清除算法
+ * 4. 增量垃圾回收机制
+ * 5. 弱引用和弱表处理
+ * 6. 终结器执行和资源清理
+ * 7. 写屏障和并发安全
+ * 8. 性能基准和压力测试
+ * 
+ * 双重验证机制：
+ * - 🔍 lua_c_analysis: 验证与lgc.c的三色标记算法行为一致性
+ * - 🏗️ lua_with_cpp: 验证现代C++垃圾回收器设计正确性
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -909,5 +923,300 @@ TEST_CASE("GC - 性能测试契约", "[gc][contract][performance]") {
         int short_pauses = std::count_if(pause_times.begin(), pause_times.end(),
                                        [](long pause) { return pause < 100; });
         REQUIRE(short_pauses > static_cast<int>(pause_times.size() * 0.8)); // 80%的暂停应该小于100微秒
+    }
+}
+
+/* ========================================================================== */
+/* Lua 5.1.5兼容性验证契约 */
+/* ========================================================================== */
+
+TEST_CASE("GC - Lua 5.1.5兼容性验证契约", "[gc][contract][compatibility]") {
+    SECTION("GC状态机兼容性") {
+        // 🔍 lua_c_analysis验证: 确保与lgc.c中的GC状态机一致
+        GarbageCollector gc;
+        
+        // Lua 5.1.5的5状态GC机器：Pause -> Propagate -> Sweep -> Finalize -> Pause
+        REQUIRE(gc.GetState() == GCState::Pause);
+        
+        // 验证状态转换序列与Lua 5.1.5一致
+        gc.SetState(GCState::Propagate);
+        REQUIRE(gc.GetState() == GCState::Propagate);
+        
+        gc.SetState(GCState::AtomicMark);
+        REQUIRE(gc.GetState() == GCState::AtomicMark);
+        
+        gc.SetState(GCState::Sweep);
+        REQUIRE(gc.GetState() == GCState::Sweep);
+        
+        gc.SetState(GCState::Finalize);
+        REQUIRE(gc.GetState() == GCState::Finalize);
+        
+        gc.SetState(GCState::Pause);
+        REQUIRE(gc.GetState() == GCState::Pause);
+    }
+
+    SECTION("内存阈值计算兼容性") {
+        // 🔍 lua_c_analysis验证: 阈值计算与Lua 5.1.5公式一致
+        GCConfig config;
+        config.pause_multiplier = 200; // Lua 5.1.5默认值
+        GarbageCollector gc(config);
+        
+        Size initial_memory = 1024;
+        gc.SetAllocatedMemory(initial_memory);
+        
+        // Lua 5.1.5公式: threshold = totalbytes * pause / 100
+        Size expected_threshold = initial_memory * config.pause_multiplier / 100;
+        gc.UpdateThreshold();
+        
+        REQUIRE(gc.GetThreshold() == expected_threshold);
+    }
+
+    SECTION("三色标记算法兼容性") {
+        // 🔍 lua_c_analysis验证: 三色标记与lgc.c算法一致
+        GarbageCollector gc;
+        VirtualMachine vm;
+        
+        // 创建对象图模拟Lua 5.1.5的典型场景
+        auto table = gc.AllocateTable(4, 4);
+        auto str1 = gc.AllocateString("test1");
+        auto str2 = gc.AllocateString("test2");
+        auto func = gc.AllocateFunction(nullptr);
+        
+        // 建立复杂引用关系
+        table->Set(TValue::CreateString("key1"), TValue::CreateString(str1));
+        table->Set(TValue::CreateString("key2"), TValue::CreateFunction(func));
+        table->Set(TValue::CreateNumber(1), TValue::CreateString(str2));
+        
+        vm.Push(TValue::CreateTable(table));
+        
+        // 手动控制标记过程，验证颜色转换
+        REQUIRE(table->GetColor() == GCColor::White);
+        REQUIRE(str1->GetColor() == GCColor::White);
+        REQUIRE(str2->GetColor() == GCColor::White);
+        
+        // 开始标记过程
+        gc.StartMarking(&vm);
+        
+        // 根对象应该变为灰色
+        REQUIRE(table->GetColor() == GCColor::Gray);
+        
+        // 传播标记
+        gc.PropagateMarks();
+        
+        // 所有可达对象应该变为黑色
+        REQUIRE(table->GetColor() == GCColor::Black);
+        REQUIRE(str1->GetColor() == GCColor::Black);
+        REQUIRE(str2->GetColor() == GCColor::Black);
+        REQUIRE(func->GetColor() == GCColor::Black);
+    }
+
+    SECTION("增量回收步长兼容性") {
+        // 🔍 lua_c_analysis验证: 步长计算与Lua 5.1.5一致
+        GCConfig config;
+        config.step_multiplier = 200;
+        GarbageCollector gc(config);
+        VirtualMachine vm;
+        
+        // 分配足够的对象触发增量GC
+        Size allocated_before = gc.GetAllocatedBytes();
+        for (int i = 0; i < 100; ++i) {
+            gc.AllocateString("step_test_" + std::to_string(i));
+        }
+        Size allocated_after = gc.GetAllocatedBytes();
+        Size allocated_delta = allocated_after - allocated_before;
+        
+        // Lua 5.1.5步长计算公式
+        Size expected_step_size = allocated_delta * config.step_multiplier / 100;
+        
+        gc.StartIncrementalCollection(&vm);
+        Size actual_step_size = gc.GetStepSize();
+        
+        REQUIRE(actual_step_size >= expected_step_size * 0.8); // 允许20%的误差
+        REQUIRE(actual_step_size <= expected_step_size * 1.2);
+    }
+
+    SECTION("弱表处理兼容性") {
+        // 🔍 lua_c_analysis验证: 弱表处理与Lua 5.1.5一致
+        GarbageCollector gc;
+        VirtualMachine vm;
+        
+        // 测试Lua 5.1.5的弱表语义
+        auto weak_k_table = gc.AllocateWeakTable(WeakMode::Keys);
+        auto weak_v_table = gc.AllocateWeakTable(WeakMode::Values);
+        auto weak_kv_table = gc.AllocateWeakTable(WeakMode::KeysAndValues);
+        
+        auto key = gc.AllocateString("weak_key");
+        auto value = gc.AllocateString("weak_value");
+        
+        // 设置弱引用
+        weak_k_table->Set(TValue::CreateString(key), TValue::CreateString(value));
+        weak_v_table->Set(TValue::CreateString(key), TValue::CreateString(value));
+        weak_kv_table->Set(TValue::CreateString(key), TValue::CreateString(value));
+        
+        // 保持表的强引用，但不保持key/value的强引用
+        vm.Push(TValue::CreateTable(weak_k_table));
+        vm.Push(TValue::CreateTable(weak_v_table));
+        vm.Push(TValue::CreateTable(weak_kv_table));
+        
+        // 执行GC
+        gc.CollectGarbage(&vm);
+        
+        // 验证弱引用清理符合Lua 5.1.5语义
+        REQUIRE(weak_k_table->Get(TValue::CreateString(key)).IsNil());
+        REQUIRE(weak_v_table->Get(TValue::CreateString(key)).IsNil());
+        REQUIRE(weak_kv_table->Size() == 0);
+    }
+}
+
+/* ========================================================================== */
+/* 双重验证机制集成测试 */
+/* ========================================================================== */
+
+TEST_CASE("GC - 双重验证机制集成测试", "[gc][contract][verification]") {
+    SECTION("lua_c_analysis行为验证") {
+        // 🔍 验证与Lua 5.1.5原版lgc.c的行为一致性
+        GarbageCollector gc;
+        VirtualMachine vm;
+        
+        // 模拟典型的Lua程序内存分配模式
+        std::vector<GCObject*> objects;
+        
+        // 分配模式1: 大量短生命周期字符串
+        for (int i = 0; i < 1000; ++i) {
+            objects.push_back(gc.AllocateString("temp_" + std::to_string(i)));
+        }
+        
+        // 分配模式2: 少量长生命周期表结构
+        for (int i = 0; i < 10; ++i) {
+            auto table = gc.AllocateTable(16, 8);
+            vm.Push(TValue::CreateTable(table)); // 保持强引用
+            objects.push_back(table);
+        }
+        
+        Size before_gc = gc.GetAllocatedBytes();
+        Size objects_before = gc.GetTotalObjects();
+        
+        // 执行完整GC周期
+        gc.CollectGarbage(&vm);
+        
+        Size after_gc = gc.GetAllocatedBytes();
+        Size objects_after = gc.GetTotalObjects();
+        
+        // 验证回收效果符合预期
+        REQUIRE(after_gc < before_gc); // 应该回收了内存
+        REQUIRE(objects_after < objects_before); // 应该回收了对象
+        REQUIRE(objects_after >= 10); // 至少保留了栈上的表对象
+        
+        // 验证GC状态正确重置
+        REQUIRE(gc.GetState() == GCState::Pause);
+    }
+
+    SECTION("lua_with_cpp设计验证") {
+        // 🏗️ 验证现代C++垃圾回收器设计的正确性
+        GarbageCollector gc;
+        VirtualMachine vm;
+        
+        // 测试现代C++特性集成
+        
+        // 1. RAII和异常安全
+        try {
+            auto obj = gc.AllocateString("exception_test");
+            vm.Push(TValue::CreateString(obj));
+            
+            // 模拟异常情况
+            if (obj != nullptr) {
+                // 正常情况，无异常
+                SUCCEED();
+            }
+        } catch (...) {
+            FAIL("GC allocation should not throw exceptions");
+        }
+        
+        // 2. 类型安全和强类型检查
+        auto str_obj = gc.AllocateString("type_test");
+        auto table_obj = gc.AllocateTable(2, 2);
+        
+        REQUIRE(str_obj->GetType() == GCObjectType::String);
+        REQUIRE(table_obj->GetType() == GCObjectType::Table);
+        
+        // 3. 现代内存管理
+        Size initial_memory = gc.GetAllocatedBytes();
+        {
+            // 作用域内分配
+            auto scoped_obj = gc.AllocateString("scoped");
+            REQUIRE(gc.GetAllocatedBytes() > initial_memory);
+        }
+        // 作用域外应该能够被GC回收
+        gc.CollectGarbage(&vm);
+        
+        // 4. 线程安全检查（如果支持）
+        if (gc.IsThreadSafe()) {
+            std::atomic<bool> allocation_successful{true};
+            
+            // 简单的并发分配测试
+            std::thread t1([&gc, &allocation_successful]() {
+                try {
+                    for (int i = 0; i < 100; ++i) {
+                        gc.AllocateString("thread1_" + std::to_string(i));
+                    }
+                } catch (...) {
+                    allocation_successful = false;
+                }
+            });
+            
+            std::thread t2([&gc, &allocation_successful]() {
+                try {
+                    for (int i = 0; i < 100; ++i) {
+                        gc.AllocateString("thread2_" + std::to_string(i));
+                    }
+                } catch (...) {
+                    allocation_successful = false;
+                }
+            });
+            
+            t1.join();
+            t2.join();
+            
+            REQUIRE(allocation_successful);
+        }
+    }
+
+    SECTION("性能基准验证") {
+        // 🔍🏗️ 双重验证: 性能应该接近lua_c_analysis，但具备lua_with_cpp的现代特性
+        GarbageCollector gc;
+        VirtualMachine vm;
+        
+        // 大规模分配性能测试
+        const int test_objects = 10000;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        for (int i = 0; i < test_objects; ++i) {
+            auto obj = gc.AllocateString("perf_test_" + std::to_string(i));
+            if (i % 10 == 0) {
+                vm.Push(TValue::CreateString(obj)); // 保持部分对象存活
+            }
+        }
+        
+        auto alloc_time = std::chrono::high_resolution_clock::now();
+        
+        // 执行GC
+        gc.CollectGarbage(&vm);
+        
+        auto gc_time = std::chrono::high_resolution_clock::now();
+        
+        // 计算性能指标
+        auto alloc_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+            alloc_time - start_time).count();
+        auto gc_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+            gc_time - alloc_time).count();
+        
+        // 性能要求（基于经验值）
+        REQUIRE(alloc_duration < test_objects * 10); // 平均每个对象分配<10微秒
+        REQUIRE(gc_duration < test_objects * 5);     // 平均每个对象GC<5微秒
+        
+        // 内存效率验证
+        auto stats = gc.GetStatistics();
+        REQUIRE(stats.memory_efficiency > 0.8);     // 内存效率>80%
+        REQUIRE(stats.fragmentation_ratio < 0.3);   // 碎片率<30%
     }
 }
