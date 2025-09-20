@@ -1,50 +1,126 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# 现代C++ Lua解释器项目宪法
 
-## Core Principles
+## 核心原则
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### 一. Lua 5.1.5 完全兼容性（不可协商）
+**绝对兼容** Lua 5.1.5 的语法、语义和行为特性。
+- 所有现有 Lua 5.1.5 脚本必须完全兼容运行
+- 在可能的情况下保持字节码兼容性
+- 保留 C 扩展的 API 兼容性
+- 以参考实现的行为为准则
+- 通过官方测试套件验证兼容性
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### 二. 现代C++架构设计
+**充分利用 C++17/20 特性** 构建安全、清晰、高性能的代码。
+- 所有资源管理使用 RAII 原则
+- 智能指针替代原始指针
+- 通过强类型和模板确保类型安全
+- 适当使用 constexpr 和编译时计算
+- 禁止 C 风格转换和不安全操作
+- 现代STL容器和算法优先
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### 三. 性能优先设计
+**在保持代码清晰的前提下优化执行速度**。
+- 虚拟机指令分发优化
+- 内存布局优化以提高缓存效率
+- 垃圾回收性能调优
+- 零成本抽象原则
+- 基于基准测试的优化决策
+- 性能回归测试保护
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### 四. 模块化架构
+**关注点清晰分离** 与定义良好的接口。
+- 每个主要组件作为独立模块
+- 清晰的依赖关系和接口定义
+- 组件可独立测试
+- 为扩展预留插件化架构
+- 适当情况下使用仅头文件库
+- 最小化模块间耦合
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### 五. 测试驱动开发（强制性）
+**全面测试策略** 确保系统可靠性。
+- 所有组件的单元测试
+- 虚拟机行为的集成测试
+- Lua 脚本兼容性测试套件
+- 性能回归测试
+- 内存安全和泄漏检测
+- 红-绿-重构循环严格执行
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## 开发约束
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### 技术栈要求
+**标准化技术选择** 确保项目一致性和可维护性。
+- C++17 作为最低标准，C++20 特性可选
+- CMake 作为构建系统
+- Catch2 或 Google Test 作为测试框架
+- Clang-format 统一代码格式
+- 静态分析工具集成（Clang-tidy, PVS-Studio等）
+- 跨平台兼容性（Windows, Linux, macOS）
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### 代码质量标准
+**企业级代码质量** 保证长期可维护性。
+- 代码覆盖率不低于90%
+- 零警告编译（最严格警告级别）
+- 静态分析工具零缺陷
+- 内存安全工具验证（Valgrind, AddressSanitizer）
+- 文档覆盖率要求（所有公共API）
+- 代码审查必须通过
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### 性能基准
+**明确性能目标** 与持续监控。
+- 不低于原始Lua 5.1.5的执行性能
+- 内存使用不超过参考实现的120%
+- 启动时间优化目标
+- 关键路径性能基准测试
+- 持续集成中的性能回归检测
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+## 开发工作流程
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+### 规格驱动开发流程
+**结构化开发过程** 确保质量和进度。
+1. **需求规格化** - 详细的功能规格文档
+2. **架构设计** - 技术实现方案和设计决策
+3. **任务分解** - 可执行的开发任务列表
+4. **测试先行** - 编写测试用例并获得批准
+5. **实现开发** - 按照TDD原则实现功能
+6. **集成验证** - 系统级测试和兼容性验证
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+### 代码审查要求
+**多层次质量保证** 机制。
+- 所有代码变更必须经过同行审查
+- 架构变更需要技术负责人批准
+- 性能相关变更需要基准测试报告
+- 安全敏感变更需要安全审查
+- 文档更新与代码变更同步
+
+### 版本控制策略
+**清晰的版本管理** 和发布流程。
+- 语义化版本号（MAJOR.MINOR.PATCH）
+- 功能分支开发模式
+- 主分支始终保持可发布状态
+- 标签化里程碑版本
+- 变更日志详细记录
+
+## 项目治理
+
+### 宪法权威性
+**本宪法为项目最高指导原则**，凌驾于所有其他开发实践。
+- 所有代码审查必须验证宪法合规性
+- 复杂性必须有充分的技术理由
+- 偏离宪法原则需要正式批准流程
+
+### 修订程序
+**宪法修订的正式流程**。
+- 修订提案必须包含详细理由和影响评估
+- 需要项目核心团队一致同意
+- 修订后需要制定迁移计划
+- 版本号更新和修订日期记录
+
+### 争议解决
+**技术决策争议的解决机制**。
+- 优先参考宪法原则
+- 技术决策基于客观证据
+- 性能数据优于主观判断
+- 兼容性要求优先于便利性
+
+**版本**: 1.0.0 | **制定日期**: 2025-09-20 | **最后修订**: 2025-09-20

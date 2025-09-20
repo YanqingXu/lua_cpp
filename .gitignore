@@ -1,0 +1,95 @@
+# 构建文件
+build/
+bin/
+lib/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+
+# CMake文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+!cmake/
+
+# 编译器生成文件
+*.o
+*.obj
+*.d
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# IDE文件
+.vscode/
+.vs/
+*.vcxproj.user
+*.sln.docstates
+*.userprefs
+*.pidb
+*.suo
+*.user
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.tlb
+*.tlh
+*.bak
+*.cache
+*.ilk
+*.log
+*.sbr
+*.sdf
+*.opensdf
+*.unsuccessfulbuild
+ipch/
+
+# 调试文件
+*.dSYM/
+*.stackdump
+core
+gmon.out
+
+# 测试覆盖率
+*.gcov
+*.gcda
+*.gcno
+coverage/
+htmlcov/
+
+# 性能分析
+*.prof
+perf.data*
+callgrind.out.*
+
+# 临时文件
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# 依赖管理
+vcpkg_installed/
+conan/
+_deps/
+
+# 文档生成
+docs/html/
+docs/latex/
+docs/xml/
+
+# Lua脚本
+*.lua
+!tests/**/*.lua
+!examples/**/*.lua
+!docs/examples/**/*.lua

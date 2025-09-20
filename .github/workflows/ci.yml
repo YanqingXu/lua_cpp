@@ -1,0 +1,243 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # 代码质量检查
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tidy clang-format
+    
+    - name: Check Code Format
+      run: |
+        find src tests -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror
+    
+    - name: Run Clang-Tidy
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        cd ..
+        run-clang-tidy -p build src/
+
+  # 多平台构建和测试
+  build-and-test:
+    name: Build and Test
+    needs: code-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+        compiler:
+          - { name: "gcc", cc: "gcc", cxx: "g++" }
+          - { name: "clang", cc: "clang", cxx: "clang++" }
+        exclude:
+          - os: windows-latest
+            compiler: { name: "gcc", cc: "gcc", cxx: "g++" }
+          - os: windows-latest
+            compiler: { name: "clang", cc: "clang", cxx: "clang++" }
+        include:
+          - os: windows-latest
+            compiler: { name: "msvc", cc: "cl", cxx: "cl" }
+            build_type: Debug
+          - os: windows-latest
+            compiler: { name: "msvc", cc: "cl", cxx: "cl" }
+            build_type: Release
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build
+        sudo apt-get install -y libcatch2-dev libbenchmark-dev
+        sudo apt-get install -y valgrind
+    
+    - name: Install Dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew update
+        brew install cmake ninja catch2 google-benchmark
+    
+    - name: Install Dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install cmake ninja
+        vcpkg install catch2 benchmark
+    
+    - name: Setup Compiler (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        echo "CC=${{ matrix.compiler.cc }}" >> $GITHUB_ENV
+        echo "CXX=${{ matrix.compiler.cxx }}" >> $GITHUB_ENV
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DBUILD_TESTING=ON \
+          -DBUILD_BENCHMARKS=ON \
+          -DENABLE_COVERAGE=${{ matrix.build_type == 'Debug' && matrix.compiler.name == 'gcc' }}
+    
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }} --parallel
+    
+    - name: Test
+      working-directory: build
+      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel
+    
+    - name: Memory Check (Linux Debug)
+      if: matrix.os == 'ubuntu-latest' && matrix.build_type == 'Debug' && matrix.compiler.name == 'gcc'
+      working-directory: build
+      run: |
+        # 运行内存检查（选择性测试避免超时）
+        valgrind --tool=memcheck --leak-check=full --error-exitcode=1 \
+          ./bin/lua_cpp --version
+    
+    - name: Generate Coverage Report
+      if: matrix.build_type == 'Debug' && matrix.compiler.name == 'gcc' && matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get install -y lcov
+        lcov --capture --directory build --output-file coverage.info
+        lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/tests/*' --output-file coverage.info
+        lcov --list coverage.info
+    
+    - name: Upload Coverage
+      if: matrix.build_type == 'Debug' && matrix.compiler.name == 'gcc' && matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.info
+        flags: unittests
+        name: codecov-umbrella
+
+  # 性能基准测试
+  benchmark:
+    name: Performance Benchmark
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build
+        sudo apt-get install -y libbenchmark-dev
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTING=OFF \
+          -DBUILD_BENCHMARKS=ON
+    
+    - name: Build Benchmarks
+      run: cmake --build build --config Release --target benchmarks
+    
+    - name: Run Benchmarks
+      working-directory: build
+      run: |
+        ./bin/benchmarks --benchmark_format=json --benchmark_out=benchmark_results.json
+    
+    - name: Store Benchmark Results
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'googlecpp'
+        output-file-path: build/benchmark_results.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+
+  # 静态分析
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install PVS-Studio
+      run: |
+        wget -q -O - https://files.pvs-studio.com/etc/pubkey.txt | sudo apt-key add -
+        sudo wget -O /etc/apt/sources.list.d/viva64.list \
+          https://files.pvs-studio.com/etc/viva64.list
+        sudo apt-get update
+        sudo apt-get install -y pvs-studio
+    
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    
+    - name: Run PVS-Studio
+      run: |
+        pvs-studio-analyzer credentials ${{ secrets.PVS_USERNAME }} ${{ secrets.PVS_KEY }}
+        pvs-studio-analyzer analyze --source-tree src --threads $(nproc) \
+          --compile-commands build/compile_commands.json
+        plog-converter -a GA:1,2;64:1;CS -t tasklist -o pvs-report.tasks \
+          PVS-Studio.log
+    
+    - name: Upload PVS Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: pvs-studio-report
+        path: pvs-report.tasks
+
+  # 发布构建
+  release:
+    name: Create Release
+    needs: [build-and-test, benchmark]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Get Version
+      id: version
+      run: echo "version=$(grep 'VERSION' CMakeLists.txt | head -1 | sed 's/.*VERSION //' | sed 's/)//')" >> $GITHUB_OUTPUT
+    
+    - name: Build Release
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+        cmake --build build --config Release
+        cmake --build build --target package
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        release_name: Release v${{ steps.version.outputs.version }}
+        draft: false
+        prerelease: false
+    
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: build/lua_cpp-*.tar.gz
+        asset_name: lua_cpp-${{ steps.version.outputs.version }}.tar.gz
+        asset_content_type: application/gzip
