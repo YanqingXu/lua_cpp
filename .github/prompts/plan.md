@@ -13,7 +13,7 @@ description: "制定现代C++版Lua解释器的详细技术实现计划"
 #### 编程语言和标准
 - **C++17/20**: 利用现代特性提升代码质量和性能
   - 概念(Concepts)用于模板约束
-  - 协程(Coroutines)支持异步操作  
+  - 协程(Coroutines)支持异步操作
   - 模块(Modules)改善编译性能
   - 范围(Ranges)简化算法操作
 
@@ -33,7 +33,7 @@ description: "制定现代C++版Lua解释器的详细技术实现计划"
 
 #### 持续集成/部署
 - **CI/CD**: GitHub Actions 或 Azure DevOps
-- **平台支持**: Windows, Linux, macOS 
+- **平台支持**: Windows, Linux, macOS
 - **容器化**: Docker 用于构建环境标准化
 - **文档生成**: Doxygen + Sphinx 自动文档
 
@@ -106,76 +106,6 @@ constexpr bool is_lua_type_v = /* 类型特征检查 */;
 ├── Object Model
 ├── Memory Manager
 └── Platform Abstraction
-```
-
-#### 接口设计原则
-```cpp
-// 清晰的接口分离
-class ILexer {
-public:
-    virtual ~ILexer() = default;
-    virtual Token nextToken() = 0;
-    virtual void reset(std::string_view source) = 0;
-};
-
-class IParser {
-public:
-    virtual ~IParser() = default;
-    virtual std::unique_ptr<AST> parse() = 0;
-    virtual void setLexer(std::unique_ptr<ILexer> lexer) = 0;
-};
-
-// 依赖注入支持
-class Compiler {
-    std::unique_ptr<ILexer> lexer_;
-    std::unique_ptr<IParser> parser_;
-public:
-    Compiler(std::unique_ptr<ILexer> lexer, 
-             std::unique_ptr<IParser> parser)
-        : lexer_(std::move(lexer))
-        , parser_(std::move(parser)) {}
-};
-```
-
-### 3. 性能优化策略
-
-#### 编译时优化
-```cpp
-// 模板元编程优化
-template<ValueType T>
-constexpr auto getValue(const Value& v) {
-    if constexpr (T == ValueType::Number) {
-        return std::get<double>(v);
-    } else if constexpr (T == ValueType::String) {
-        return std::get<std::string>(v);
-    }
-    // 编译时展开，零运行时开销
-}
-
-// 概念约束优化
-template<LuaCallable F>
-auto callLuaFunction(F&& func, auto&&... args) {
-    // 类型约束确保正确性，编译时检查
-}
-```
-
-#### 运行时优化
-```cpp
-// 内存池分配
-class ValuePool {
-    std::vector<Value> pool_;
-    std::stack<Value*> free_list_;
-public:
-    Value* allocate() {
-        // 对象池避免频繁内存分配
-    }
-};
-
-// 指令缓存优化
-class InstructionCache {
-    std::array<Instruction, 1024> cache_;
-    // 利用CPU缓存行优化指令访问
-};
 ```
 
 ## 实施策略和阶段规划
@@ -302,4 +232,10 @@ class InstructionCache {
 
 使用 `{SCRIPT}` 来执行设置脚本，使用 `$ARGUMENTS` 来处理技术选择和配置参数。
 
-请基于以上技术方案创建详细的实施计划，确保每个阶段都有明确的目标和可衡量的成果。
+请基于以上技术方案创建详细的实施计划，重点考虑：
+- 保留lua_with_cpp的现有架构优势
+- 集成lua_c_analysis的核心算法和优化技术  
+- 采用现代C++设计模式和最佳实践
+- 建立完整的质量保证和性能监控体系
+
+确保每个阶段都有明确的目标和可衡量的成果。

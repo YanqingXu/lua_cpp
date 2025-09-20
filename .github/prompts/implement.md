@@ -330,68 +330,6 @@ private:
 };
 ```
 
-**Step 2: 高性能字符串库**
-```cpp
-// 目标：优化的字符串处理
-class StringLibrary : public LibraryModule {
-public:
-    std::string_view name() const override { return "string"; }
-    
-    void registerFunctions(VM& vm) override {
-        auto string_table = vm.createTable();
-        vm.setGlobal("string", string_table);
-        
-        vm.setTableFunction(string_table, "len", &StringLibrary::len);
-        vm.setTableFunction(string_table, "sub", &StringLibrary::sub);
-        vm.setTableFunction(string_table, "upper", &StringLibrary::upper);
-        vm.setTableFunction(string_table, "lower", &StringLibrary::lower);
-        vm.setTableFunction(string_table, "find", &StringLibrary::find);
-        vm.setTableFunction(string_table, "gsub", &StringLibrary::gsub);
-        // ... 其他函数
-    }
-    
-private:
-    static Value len(VM& vm, std::span<const Value> args) {
-        if (args.empty() || !args[0].is<std::string>()) {
-            throw LuaError("string expected");
-        }
-        return Value{static_cast<double>(args[0].get<std::string>().length())};
-    }
-    
-    static Value sub(VM& vm, std::span<const Value> args) {
-        if (args.size() < 2) throw LuaError("insufficient arguments");
-        
-        const auto& str = args[0].get<std::string>();
-        auto start = static_cast<size_t>(args[1].get<double>()) - 1; // Lua uses 1-based indexing
-        auto end = args.size() > 2 ? 
-            static_cast<size_t>(args[2].get<double>()) : str.length();
-            
-        return Value{str.substr(start, end - start)};
-    }
-    
-    // 高性能模式匹配实现
-    static Value find(VM& vm, std::span<const Value> args) {
-        if (args.size() < 2) throw LuaError("insufficient arguments");
-        
-        const auto& str = args[0].get<std::string>();
-        const auto& pattern = args[1].get<std::string>();
-        
-        // 使用std::string_view避免不必要的拷贝
-        std::string_view str_view{str};
-        auto pos = str_view.find(pattern);
-        
-        if (pos != std::string_view::npos) {
-            return vm.createMultiReturn({
-                Value{static_cast<double>(pos + 1)}, // 1-based indexing
-                Value{static_cast<double>(pos + pattern.length())}
-            });
-        }
-        
-        return Value{}; // nil
-    }
-};
-```
-
 **验收标准**:
 - [ ] 所有Lua 5.1.5标准库函数实现完成
 - [ ] 字符串操作性能提升 > 50%
@@ -456,47 +394,6 @@ private:
 };
 ```
 
-**Step 2: 性能基准验证**
-```cpp
-// 目标：性能基准达标
-static void BM_FunctionCall(benchmark::State& state) {
-    ModernLuaInterpreter lua;
-    lua.execute("function test() return 42 end");
-    
-    for (auto _ : state) {
-        auto result = lua.call("test");
-        benchmark::DoNotOptimize(result);
-    }
-    
-    state.SetItemsProcessed(state.iterations());
-}
-BENCHMARK(BM_FunctionCall);
-
-static void BM_StringOperation(benchmark::State& state) {
-    ModernLuaInterpreter lua;
-    
-    for (auto _ : state) {
-        auto result = lua.execute("return string.len('hello world')");
-        benchmark::DoNotOptimize(result);
-    }
-}
-BENCHMARK(BM_StringOperation);
-
-// 性能回归检测
-class PerformanceRegression {
-public:
-    void checkPerformanceTargets() {
-        auto results = runBenchmarks();
-        
-        // 验证性能目标
-        EXPECT_LT(results.function_call_time, 1.0); // < 1微秒
-        EXPECT_LT(results.string_operation_time, 0.5); // < 0.5微秒
-        EXPECT_LT(results.math_operation_time, 0.5); // < 0.5微秒
-        EXPECT_LT(results.table_operation_time, 1.0); // < 1微秒
-    }
-};
-```
-
 **验收标准**:
 - [ ] Lua 5.1.5兼容性测试 100%通过
 - [ ] 性能基准全部达标
@@ -548,4 +445,10 @@ compatibility_job:
 
 使用 `{SCRIPT}` 来执行实现脚本，跟踪进度和质量指标。
 
-请按照以上执行计划，逐阶段实施现代C++版Lua解释器的开发，确保每个阶段都达到质量标准和性能目标。
+请按照以上执行计划，逐阶段实施现代C++版Lua解释器的开发，重点：
+- 充分利用lua_with_cpp的80%现有功能基础
+- 深度集成lua_c_analysis的核心算法和优化技术
+- 严格执行测试驱动开发和质量保证流程
+- 确保每个阶段都达到质量标准和性能目标
+
+开始执行完整的现代C++版Lua解释器构建流程！
