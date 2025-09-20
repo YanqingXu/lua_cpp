@@ -2,23 +2,33 @@
 
 **输入**: 来自 `/specs/` 的设计文档  
 **前置条件**: plan.md, research.md, data-model.md, contracts/  
+**参考项目**: lua_c_analysis (行为验证) + lua_with_cpp (质量标准)  
 **创建日期**: 2025-09-20
 
 ## 执行流程总结
 ```
-1. 加载实现计划 ✅ - plan.md已分析
+1. 加载实现计划 ✅ - plan.md已分析，包含参考项目集成策略
 2. 加载设计文档 ✅ - data-model.md, contracts/已提取
 3. 按类别生成任务 ✅ - 设置、测试、核心、集成、完善
-4. 应用任务规则 ✅ - TDD优先，并行标记，依赖管理
-5. 顺序编号任务 ✅ - T001-T058编号
-6. 生成依赖图 ✅ - 明确任务依赖关系
-7. 验证任务完整性 ✅ - 覆盖所有契约和实体
+4. 集成参考项目验证 ✅ - 每个任务都包含双重验证步骤
+5. 应用任务规则 ✅ - TDD优先，并行标记，依赖管理
+6. 顺序编号任务 ✅ - T001-T058编号
+7. 生成依赖图 ✅ - 明确任务依赖关系
+8. 验证任务完整性 ✅ - 覆盖所有契约和实体
 ```
+
+## 参考项目验证策略
+**每个开发任务都包含以下标准验证步骤**:
+- 🔍 **lua_c_analysis验证**: 与对应C源码的行为和性能对比
+- 🏗️ **lua_with_cpp参考**: 采用相应的现代C++架构和质量标准
+- ✅ **双重验证**: 行为正确性 + 代码质量 + 性能基准
 
 ## 格式说明: `[ID] [P?] 任务描述`
 - **[P]**: 可并行执行（不同文件，无依赖）
 - 任务描述包含确切的文件路径
 - 严格按照TDD原则：测试先行，实现后行
+- **🔍**: lua_c_analysis参考验证步骤
+- **🏗️**: lua_with_cpp架构借鉴步骤
 
 ## 第3.1阶段：项目设置
 
@@ -50,53 +60,77 @@
 - [ ] **T005** [P] LuaValue类型系统契约测试
   - `tests/contract/test_lua_value_contract.cpp`
   - 测试所有类型转换、比较操作、内存安全
+  - 🔍 **lua_c_analysis验证**: 对比`lobject.h`中TValue的行为和类型判断
+  - 🏗️ **lua_with_cpp参考**: 学习`vm/value.hpp`的类型安全包装设计
 
 - [ ] **T006** [P] LuaString驻留机制契约测试  
   - `tests/contract/test_lua_string_contract.cpp`
   - 测试字符串驻留、哈希一致性、线程安全
+  - 🔍 **lua_c_analysis验证**: 与`lstring.c`的字符串池行为保持一致
+  - 🏗️ **lua_with_cpp参考**: 采用`gc/core/gc_string.hpp`的现代化设计
 
 - [ ] **T007** [P] LuaTable操作契约测试
   - `tests/contract/test_lua_table_contract.cpp`
   - 测试数组/哈希混合存储、元表机制、迭代器
+  - 🔍 **lua_c_analysis验证**: 确保与`ltable.c`的混合存储策略完全兼容
+  - 🏗️ **lua_with_cpp参考**: 借鉴`vm/table.hpp`的接口设计和优化
 
 - [ ] **T008** [P] LuaFunction调用契约测试
   - `tests/contract/test_lua_function_contract.cpp`
   - 测试Lua函数、C函数、闭包管理
+  - 🔍 **lua_c_analysis验证**: 对比`lfunc.c`的函数对象和闭包实现
+  - 🏗️ **lua_with_cpp参考**: 学习`vm/function.hpp`的现代函数管理
 
 ### 虚拟机契约测试
 - [ ] **T009** [P] 虚拟机执行契约测试
   - `tests/contract/test_vm_execution_contract.cpp`
   - 测试指令分发、栈操作、调用帧管理
+  - 🔍 **lua_c_analysis验证**: 与`lvm.c`的`luaV_execute`函数行为完全一致
+  - 🏗️ **lua_with_cpp参考**: 采用`vm/vm_executor.hpp`的现代化执行架构
 
 - [ ] **T010** [P] 词法分析器契约测试
   - `tests/contract/test_lexer_contract.cpp`
   - 测试所有token类型、错误处理、位置信息
+  - 🔍 **lua_c_analysis验证**: 确保与`llex.c`的token识别规则完全相同
+  - 🏗️ **lua_with_cpp参考**: 学习`lexer/lexer.hpp`的错误处理和状态管理
 
 - [ ] **T011** [P] 语法分析器契约测试
   - `tests/contract/test_parser_contract.cpp`
   - 测试AST生成、语法错误、操作符优先级
+  - 🔍 **lua_c_analysis验证**: 与`lparser.c`的语法解析规则保持一致
+  - 🏗️ **lua_with_cpp参考**: 借鉴`parser/enhanced_parser.hpp`的现代解析器设计
 
 - [ ] **T012** [P] 字节码编译器契约测试
   - `tests/contract/test_compiler_contract.cpp`
   - 测试指令生成、优化、调试信息
+  - 🔍 **lua_c_analysis验证**: 生成与`lcode.c`兼容的字节码格式
+  - 🏗️ **lua_with_cpp参考**: 学习`compiler/compiler.hpp`的现代编译器架构
 
 ### 垃圾回收契约测试
 - [ ] **T013** [P] 垃圾回收器契约测试
   - `tests/contract/test_gc_contract.cpp`
   - 测试标记清除、增量回收、弱引用
+  - 🔍 **lua_c_analysis验证**: 与`lgc.c`的三色标记算法行为保持一致
+  - 🏗️ **lua_with_cpp参考**: 采用`gc/core/garbage_collector.hpp`的现代GC设计
 
 - [ ] **T014** [P] 内存管理契约测试
   - `tests/contract/test_memory_contract.cpp`
   - 测试对象池、内存统计、泄漏检测
+  - 🔍 **lua_c_analysis验证**: 与`lmem.c`的内存分配策略保持兼容
+  - 🏗️ **lua_with_cpp参考**: 学习`gc/memory/allocator.hpp`的智能指针集成
 
 ### C API契约测试
 - [ ] **T015** [P] C API基础操作契约测试
   - `tests/contract/test_c_api_basic_contract.cpp`
   - 测试栈操作、类型检查、状态管理
+  - 🔍 **lua_c_analysis验证**: 与`lapi.c`的所有API函数保持二进制兼容
+  - 🏗️ **lua_with_cpp参考**: 借鉴`api/`目录的现代C++ API包装设计
 
 - [ ] **T016** [P] C API函数调用契约测试
   - `tests/contract/test_c_api_call_contract.cpp`
   - 测试函数注册、调用、错误处理
+  - 🔍 **lua_c_analysis验证**: 确保与原始C API的函数调用语义完全一致
+  - 🏗️ **lua_with_cpp参考**: 学习现代化的错误处理和异常安全机制
 
 ### 集成测试
 - [ ] **T017** [P] Lua脚本执行集成测试
