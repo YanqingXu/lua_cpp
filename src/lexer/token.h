@@ -8,10 +8,12 @@
 #ifndef LUA_TOKEN_H
 #define LUA_TOKEN_H
 
-#include "core/lua_common.h"
+#include "../core/lua_common.h"
 #include <string>
 #include <variant>
 #include <memory>
+#include <vector>
+#include <unordered_map>
 
 namespace lua_cpp {
 

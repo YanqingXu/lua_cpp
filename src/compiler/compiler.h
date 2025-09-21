@@ -1,15 +1,17 @@
 #pragma once
 
 #include "bytecode.h"
-#include "parser/ast.h"
-#include "core/common.h"
-#include "core/lua_value.h"
-#include "core/error.h"
+#include "ast_base.h"
+#include "../core/lua_common.h"
+#include "../types/value.h"
+#include "../core/lua_errors.h"
 #include <memory>
 #include <unordered_map>
 #include <vector>
 #include <string>
 #include <stack>
+#include <set>
+#include <optional>
 
 namespace lua_cpp {
 
