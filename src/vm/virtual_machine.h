@@ -410,121 +410,142 @@ private:
     /* ====================================================================== */
     
     // 数据移动指令
-    void ExecuteMove(Instruction inst);
-    void ExecuteLoadK(Instruction inst);
-    void ExecuteLoadBool(Instruction inst);
-    void ExecuteLoadNil(Instruction inst);
+    void ExecuteMOVE(RegisterIndex a, int b);
+    void ExecuteLOADK(RegisterIndex a, int bx);
+    void ExecuteLOADBOOL(RegisterIndex a, int b, int c);
+    void ExecuteLOADNIL(RegisterIndex a, int b);
     
-    // 全局变量指令
-    void ExecuteGetUpval(Instruction inst);
-    void ExecuteGetGlobal(Instruction inst);
-    void ExecuteGetTable(Instruction inst);
-    void ExecuteSetGlobal(Instruction inst);
-    void ExecuteSetUpval(Instruction inst);
-    void ExecuteSetTable(Instruction inst);
+    // 全局变量和上值指令
+    void ExecuteGETUPVAL(RegisterIndex a, int b);
+    void ExecuteGETGLOBAL(RegisterIndex a, int bx);
+    void ExecuteGETTABLE(RegisterIndex a, int b, int c);
+    void ExecuteSETGLOBAL(RegisterIndex a, int bx);
+    void ExecuteSETUPVAL(RegisterIndex a, int b);
+    void ExecuteSETTABLE(RegisterIndex a, int b, int c);
     
     // 表操作指令
-    void ExecuteNewTable(Instruction inst);
-    void ExecuteSelf(Instruction inst);
-    void ExecuteSetList(Instruction inst);
+    void ExecuteNEWTABLE(RegisterIndex a, int b, int c);
+    void ExecuteSELF(RegisterIndex a, int b, int c);
+    void ExecuteSETLIST(RegisterIndex a, int b, int c);
     
     // 算术指令
-    void ExecuteAdd(Instruction inst);
-    void ExecuteSub(Instruction inst);
-    void ExecuteMul(Instruction inst);
-    void ExecuteDiv(Instruction inst);
-    void ExecuteMod(Instruction inst);
-    void ExecutePow(Instruction inst);
-    void ExecuteUnm(Instruction inst);
-    void ExecuteNot(Instruction inst);
-    void ExecuteLen(Instruction inst);
-    void ExecuteConcat(Instruction inst);
+    void ExecuteADD(RegisterIndex a, int b, int c);
+    void ExecuteSUB(RegisterIndex a, int b, int c);
+    void ExecuteMUL(RegisterIndex a, int b, int c);
+    void ExecuteDIV(RegisterIndex a, int b, int c);
+    void ExecuteMOD(RegisterIndex a, int b, int c);
+    void ExecutePOW(RegisterIndex a, int b, int c);
+    void ExecuteUNM(RegisterIndex a, int b);
+    void ExecuteNOT(RegisterIndex a, int b);
+    void ExecuteLEN(RegisterIndex a, int b);
+    void ExecuteCONCAT(RegisterIndex a, int b, int c);
     
     // 跳转和比较指令
-    void ExecuteJmp(Instruction inst);
-    void ExecuteEq(Instruction inst);
-    void ExecuteLt(Instruction inst);
-    void ExecuteLe(Instruction inst);
-    void ExecuteTest(Instruction inst);
-    void ExecuteTestSet(Instruction inst);
+    void ExecuteJMP(int sbx);
+    void ExecuteEQ(RegisterIndex a, int b, int c);
+    void ExecuteLT(RegisterIndex a, int b, int c);
+    void ExecuteLE(RegisterIndex a, int b, int c);
+    void ExecuteTEST(RegisterIndex a, int c);
+    void ExecuteTESTSET(RegisterIndex a, int b, int c);
     
     // 函数调用指令
-    void ExecuteCall(Instruction inst);
-    void ExecuteTailCall(Instruction inst);
-    void ExecuteReturn(Instruction inst);
+    void ExecuteCALL(RegisterIndex a, int b, int c);
+    void ExecuteTAILCALL(RegisterIndex a, int b, int c);
+    void ExecuteRETURN(RegisterIndex a, int b);
     
     // 循环指令
-    void ExecuteForLoop(Instruction inst);
-    void ExecuteForPrep(Instruction inst);
-    void ExecuteTForLoop(Instruction inst);
+    void ExecuteFORLOOP(RegisterIndex a, int sbx);
+    void ExecuteFORPREP(RegisterIndex a, int sbx);
+    void ExecuteTFORLOOP(RegisterIndex a, int c);
     
-    // 闭包指令
-    void ExecuteClose(Instruction inst);
-    void ExecuteClosure(Instruction inst);
-    void ExecuteVararg(Instruction inst);
+    // 闭包和其他指令
+    void ExecuteCLOSE(RegisterIndex a);
+    void ExecuteCLOSURE(RegisterIndex a, int bx);
+    void ExecuteVARARG(RegisterIndex a, int b);
     
     /* ====================================================================== */
-    /* 辅助方法 */
+    /* 虚拟机内部方法 */
     /* ====================================================================== */
+    
+    /**
+     * @brief 检查是否还有更多指令
+     */
+    bool HasMoreInstructions() const;
+    
+    /**
+     * @brief 获取下一条指令
+     */
+    Instruction GetNextInstruction() const;
+    
+    /**
+     * @brief 获取当前行号
+     */
+    int GetCurrentLine() const;
+    
+    /**
+     * @brief 设置寄存器值
+     */
+    void SetRegister(RegisterIndex reg, const LuaValue& value);
+    
+    /**
+     * @brief 获取寄存器值
+     */
+    LuaValue GetRegister(RegisterIndex reg) const;
     
     /**
      * @brief 获取RK值（寄存器或常量）
      */
-    const LuaValue& GetRKValue(int rk) const;
+    LuaValue GetRK(int rk) const;
     
     /**
-     * @brief 执行算术操作
+     * @brief 获取当前调用帧的基址
      */
-    LuaValue ExecuteArithmeticOperation(const LuaValue& left, const LuaValue& right, OpCode op);
+    Size GetCurrentBase() const;
     
     /**
-     * @brief 执行比较操作
+     * @brief 推入调用帧
      */
-    bool ExecuteComparisonOperation(const LuaValue& left, const LuaValue& right, OpCode op);
+    void PushCallFrame(const Proto* proto, Size base, Size param_count);
     
     /**
-     * @brief 检查类型兼容性
+     * @brief 弹出调用帧
      */
-    void CheckTypeCompatibility(const LuaValue& value, const std::vector<LuaType>& expected_types);
+    void PopCallFrame();
     
-    /**
-     * @brief 更新统计信息
-     */
-    void UpdateStatistics(OpCode op);
+    /* ====================================================================== */
+    /* 指令解码方法 */
+    /* ====================================================================== */
     
-    /**
-     * @brief 触发调试钩子
-     */
-    void TriggerDebugHook();
-    
-    /**
-     * @brief 检查执行限制
-     */
-    void CheckExecutionLimits();
-    
-    /**
-     * @brief 处理错误
-     */
-    void HandleError(const std::string& message);
+    OpCode DecodeOpCode(Instruction inst) const;
+    RegisterIndex DecodeA(Instruction inst) const;
+    int DecodeB(Instruction inst) const;
+    int DecodeC(Instruction inst) const;
+    int DecodeBx(Instruction inst) const;
+    int DecodeSBx(Instruction inst) const;
     
     /* ====================================================================== */
     /* 成员变量 */
     /* ====================================================================== */
     
+    // 配置
+    VMConfig config_;
+    
     // 核心组件
     std::unique_ptr<LuaStack> stack_;           // 值堆栈
-    std::unique_ptr<CallStack> call_stack_;     // 调用栈
+    std::vector<CallFrame> call_stack_;         // 调用栈
     
-    // 配置和状态
-    VMConfig config_;                           // VM配置
+    // 执行状态
     ExecutionState execution_state_;            // 执行状态
+    Size instruction_pointer_;                  // 指令指针
+    const Proto* current_proto_;                // 当前函数原型
+    
+    // 全局状态
+    std::shared_ptr<LuaTable> global_table_;    // 全局变量表
     
     // 调试和分析
     DebugHook debug_hook_;                      // 调试钩子
     ExecutionStatistics statistics_;           // 执行统计
-    
-    // 全局状态
-    std::shared_ptr<LuaTable> global_table_;    // 全局变量表
+    Size instruction_count_;                    // 指令计数器
 };
 
 /* ========================================================================== */

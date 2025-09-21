@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <unordered_set>
+#include <mutex>
 
 namespace lua_cpp {
 
@@ -29,7 +30,7 @@ class LuaTable;
 class OutOfMemoryError : public LuaError {
 public:
     explicit OutOfMemoryError(const std::string& message = "Out of memory")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(ErrorCode::OutOfMemory, message) {}
 };
 
 /**
@@ -38,23 +39,12 @@ public:
 class GCError : public LuaError {
 public:
     explicit GCError(const std::string& message = "Garbage collection error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(ErrorCode::Generic, message) {}
 };
 
 /* ========================================================================== */
 /* GC状态和配置 */
 /* ========================================================================== */
-
-/**
- * @brief GC状态枚举
- */
-enum class GCState {
-    Pause,          // 暂停状态
-    Propagate,      // 传播标记状态  
-    AtomicMark,     // 原子标记状态
-    Sweep,          // 清除状态
-    Finalize        // 终结状态
-};
 
 /**
  * @brief GC对象类型
@@ -66,15 +56,6 @@ enum class GCObjectType {
     UserData,       // 用户数据对象
     Thread,         // 协程对象
     Proto           // 函数原型对象
-};
-
-/**
- * @brief GC对象颜色（三色标记算法）
- */
-enum class GCColor {
-    White,          // 白色：未标记
-    Gray,           // 灰色：已标记但子对象未扫描
-    Black           // 黑色：已标记且子对象已扫描
 };
 
 /**
@@ -162,7 +143,7 @@ public:
     /**
      * @brief 检查是否已标记
      */
-    bool IsMarked() const { return color_ != GCColor::White; }
+    bool IsMarked() const { return color_ != GCColor::White0 && color_ != GCColor::White1; }
     
     /* ====================================================================== */
     /* 标记和遍历 */
@@ -278,7 +259,7 @@ public:
     
     void Set(const LuaValue& key, const LuaValue& value);
     LuaValue Get(const LuaValue& key) const;
-    Size Size() const;
+    Size GetSize() const;
     Size GetArraySize() const { return array_size_; }
     Size GetHashSize() const { return hash_size_; }
     
@@ -305,6 +286,24 @@ public:
 private:
     const class Proto* proto_;
     std::vector<LuaValue> upvalues_;
+};
+
+/* ========================================================================== */
+/* GC统计信息结构 */
+/* ========================================================================== */
+
+/**
+ * @brief GC统计信息
+ */
+struct GCStats {
+    Size collections_performed = 0;    // 执行的回收次数
+    Size total_freed_bytes = 0;        // 总释放字节数
+    Size total_freed_objects = 0;      // 总释放对象数
+    Size max_memory_used = 0;          // 最大内存使用量
+    double average_pause_time = 0.0;   // 平均暂停时间
+    Size current_memory_usage = 0;     // 当前内存使用量
+    Size current_object_count = 0;     // 当前对象数量
+    Size gc_threshold = 0;             // GC阈值
 };
 
 /**
@@ -372,232 +371,123 @@ struct GCStatistics {
 /**
  * @brief 垃圾收集器类
  * 
- * 实现Lua 5.1.5的垃圾收集器，支持：
- * - 三色标记清除算法
+ * 实现标记-清扫垃圾收集器，支持：
+ * - 三色标记算法
  * - 增量垃圾回收
- * - 弱引用处理
  * - 终结器管理
- * - 多线程安全
+ * - 线程安全
  */
 class GarbageCollector {
 public:
     /**
      * @brief 构造函数
-     * @param config GC配置
+     * @param vm 关联的虚拟机
      */
-    explicit GarbageCollector(const GCConfig& config = GCConfig());
+    explicit GarbageCollector(VirtualMachine* vm = nullptr);
     
     /**
      * @brief 析构函数
      */
     ~GarbageCollector();
     
-    // 禁用拷贝，允许移动
-    GarbageCollector(const GarbageCollector&) = delete;
-    GarbageCollector& operator=(const GarbageCollector&) = delete;
-    GarbageCollector(GarbageCollector&&) = default;
-    GarbageCollector& operator=(GarbageCollector&&) = default;
+    // 禁用拷贝和移动
+    LUA_NO_COPY_MOVE(GarbageCollector)
     
     /* ====================================================================== */
-    /* 对象分配 */
+    /* 对象生命周期管理 */
     /* ====================================================================== */
     
     /**
-     * @brief 分配字符串对象
+     * @brief 注册GC对象
      */
-    StringObject* AllocateString(const std::string& str);
+    void RegisterObject(GCObject* obj);
     
     /**
-     * @brief 分配表对象
+     * @brief 注销GC对象
      */
-    TableObject* AllocateTable(Size array_size = 0, Size hash_size = 0);
-    
-    /**
-     * @brief 分配函数对象
-     */
-    FunctionObject* AllocateFunction(const class Proto* proto);
-    
-    /**
-     * @brief 分配用户数据对象
-     */
-    UserDataObject* AllocateUserData(Size size);
-    
-    /**
-     * @brief 分配弱引用表对象
-     */
-    WeakTableObject* AllocateWeakTable(WeakMode mode, Size array_size = 0, Size hash_size = 0);
+    void UnregisterObject(GCObject* obj);
     
     /* ====================================================================== */
-    /* GC控制 */
+    /* 垃圾收集控制 */
     /* ====================================================================== */
     
     /**
-     * @brief 执行完整的垃圾回收
-     * @param vm 主虚拟机
-     * @param additional_vms 额外的虚拟机列表
+     * @brief 执行垃圾收集
      */
-    void CollectGarbage(VirtualMachine* vm, 
-                       const std::vector<VirtualMachine*>& additional_vms = {});
+    void Collect();
     
     /**
-     * @brief 开始增量垃圾回收
+     * @brief 执行完整收集
      */
-    void StartIncrementalCollection(VirtualMachine* vm);
+    void PerformFullCollection();
     
     /**
-     * @brief 执行增量GC步骤
-     * @param vm 虚拟机
-     * @param work_limit 工作量限制（字节）
-     * @return 是否完成了完整的GC循环
+     * @brief 执行增量收集
      */
-    bool IncrementalStep(VirtualMachine* vm, Size work_limit);
+    void PerformIncrementalCollection();
     
     /**
-     * @brief 写屏障（用于增量GC）
-     * @param parent 父对象
-     * @param child 子对象
+     * @brief 触发垃圾收集
      */
-    void WriteBarrier(GCObject* parent, GCObject* child);
+    void TriggerGC();
     
     /* ====================================================================== */
-    /* 状态管理 */
-    /* ====================================================================== */
-    
-    /**
-     * @brief 获取GC状态
-     */
-    GCState GetState() const { return state_; }
-    
-    /**
-     * @brief 设置GC状态
-     */
-    void SetState(GCState state) { state_ = state; }
-    
-    /**
-     * @brief 获取已分配字节数
-     */
-    Size GetAllocatedBytes() const { return allocated_bytes_.load(); }
-    
-    /**
-     * @brief 获取对象总数
-     */
-    Size GetTotalObjects() const { return total_objects_.load(); }
-    
-    /**
-     * @brief 获取回收次数
-     */
-    Size GetCollectionCount() const { return collection_count_.load(); }
-    
-    /* ====================================================================== */
-    /* 配置管理 */
-    /* ====================================================================== */
-    
-    /**
-     * @brief 获取GC阈值
-     */
-    Size GetThreshold() const { return threshold_; }
-    
-    /**
-     * @brief 设置GC阈值
-     */
-    void SetThreshold(Size threshold) { threshold_ = threshold; }
-    
-    /**
-     * @brief 获取步长乘数
-     */
-    int GetStepMultiplier() const { return config_.step_multiplier; }
-    
-    /**
-     * @brief 设置步长乘数
-     */
-    void SetStepMultiplier(int multiplier) { config_.step_multiplier = multiplier; }
-    
-    /**
-     * @brief 获取暂停乘数
-     */
-    int GetPause() const { return config_.pause_multiplier; }
-    
-    /**
-     * @brief 设置暂停乘数
-     */
-    void SetPause(int pause) { config_.pause_multiplier = pause; }
-    
-    /**
-     * @brief 检查是否启用增量GC
-     */
-    bool IsIncrementalEnabled() const { return config_.enable_incremental; }
-    
-    /**
-     * @brief 检查是否启用分代GC
-     */
-    bool IsGenerationalEnabled() const { return config_.enable_generational; }
-    
-    /**
-     * @brief 检查是否启用自动GC
-     */
-    bool IsAutomaticGCEnabled() const { return config_.enable_auto_gc; }
-    
-    /**
-     * @brief 设置自动GC
-     */
-    void SetAutomaticGC(bool enabled) { config_.enable_auto_gc = enabled; }
-    
-    /**
-     * @brief 获取内存限制
-     */
-    Size GetMemoryLimit() const { return config_.memory_limit; }
-    
-    /**
-     * @brief 设置内存限制
-     */
-    void SetMemoryLimit(Size limit) { config_.memory_limit = limit; }
-    
-    /* ====================================================================== */
-    /* 统计和调试 */
-    /* ====================================================================== */
-    
-    /**
-     * @brief 获取GC统计信息
-     */
-    const GCStatistics& GetStatistics() const { return statistics_; }
-    
-    /**
-     * @brief 重置统计信息
-     */
-    void ResetStatistics();
-    
-    /**
-     * @brief 设置对象复活回调
-     */
-    using ResurrectionCallback = std::function<bool(GCObject*)>;
-    void SetResurrectionCallback(const ResurrectionCallback& callback) {
-        resurrection_callback_ = callback;
-    }
-    
-    /**
-     * @brief 获取内存使用报告
-     */
-    std::string GetMemoryReport() const;
-    
-    /**
-     * @brief 验证堆完整性
-     */
-    bool ValidateHeap() const;
-
-private:
-    /* ====================================================================== */
-    /* 内部GC算法 */
+    /* 标记阶段方法 */
     /* ====================================================================== */
     
     /**
      * @brief 标记阶段
      */
-    void MarkPhase(VirtualMachine* vm, const std::vector<VirtualMachine*>& additional_vms);
+    void MarkPhase();
     
     /**
-     * @brief 原子标记阶段
+     * @brief 重置对象颜色
      */
-    void AtomicMarkPhase();
+    void ResetColors();
+    
+    /**
+     * @brief 标记根对象
+     */
+    void MarkRoots();
+    
+    /**
+     * @brief 标记VM栈
+     */
+    void MarkVMStack();
+    
+    /**
+     * @brief 标记全局变量
+     */
+    void MarkGlobals();
+    
+    /**
+     * @brief 标记调用栈
+     */
+    void MarkCallStack();
+    
+    /**
+     * @brief 标记注册表
+     */
+    void MarkRegistry();
+    
+    /**
+     * @brief 标记对象
+     */
+    void MarkObject(GCObject* obj);
+    
+    /**
+     * @brief 传播标记
+     */
+    void PropagateMarks();
+    
+    /**
+     * @brief 从对象传播标记
+     */
+    void PropagateMarkFrom(GCObject* obj);
+    
+    /* ====================================================================== */
+    /* 清除阶段方法 */
+    /* ====================================================================== */
     
     /**
      * @brief 清除阶段
@@ -609,49 +499,57 @@ private:
      */
     void FinalizePhase();
     
-    /**
-     * @brief 标记根对象
-     */
-    void MarkRoots(VirtualMachine* vm, const std::vector<VirtualMachine*>& additional_vms);
-    
-    /**
-     * @brief 传播标记
-     */
-    Size PropagateMarks(Size work_limit = SIZE_MAX);
-    
-    /**
-     * @brief 清理弱引用
-     */
-    void CleanupWeakReferences();
-    
-    /**
-     * @brief 运行终结器
-     */
-    void RunFinalizers();
-    
     /* ====================================================================== */
-    /* 内存管理 */
+    /* 灰色列表管理 */
     /* ====================================================================== */
     
     /**
-     * @brief 分配内存
+     * @brief 添加到灰色列表
      */
-    void* AllocateMemory(Size size);
+    void AddToGrayList(GCObject* obj);
     
     /**
-     * @brief 释放内存
+     * @brief 从灰色列表弹出
      */
-    void FreeMemory(void* ptr, Size size);
+    GCObject* PopFromGrayList();
     
     /**
-     * @brief 注册对象
+     * @brief 从灰色列表移除
      */
-    void RegisterObject(GCObject* obj);
+    void RemoveFromGrayList(GCObject* obj);
+    
+    /* ====================================================================== */
+    /* 增量GC步骤 */
+    /* ====================================================================== */
     
     /**
-     * @brief 注销对象
+     * @brief 开始标记阶段
      */
-    void UnregisterObject(GCObject* obj);
+    void StartMarkPhase();
+    
+    /**
+     * @brief 执行标记步骤
+     */
+    bool PerformMarkStep();
+    
+    /**
+     * @brief 执行原子标记
+     */
+    void PerformAtomicMark();
+    
+    /**
+     * @brief 执行清除步骤
+     */
+    bool PerformSweepStep();
+    
+    /**
+     * @brief 执行终结
+     */
+    void PerformFinalize();
+    
+    /* ====================================================================== */
+    /* 触发条件和阈值 */
+    /* ====================================================================== */
     
     /**
      * @brief 检查是否应该触发GC
@@ -659,58 +557,108 @@ private:
     bool ShouldTriggerGC() const;
     
     /**
-     * @brief 更新阈值
+     * @brief 检查是否应该开始收集
      */
-    void UpdateThreshold();
+    bool ShouldStartCollection() const;
+    
+    /**
+     * @brief 调整GC阈值
+     */
+    void AdjustThreshold();
     
     /* ====================================================================== */
-    /* 并发控制 */
+    /* 配置和状态 */
     /* ====================================================================== */
     
     /**
-     * @brief 获取分配锁
+     * @brief 设置配置
      */
-    void LockAllocation();
+    void SetConfig(const GCConfig& config);
     
     /**
-     * @brief 释放分配锁
+     * @brief 获取配置
      */
-    void UnlockAllocation();
+    GCConfig GetConfig() const;
     
+    /**
+     * @brief 获取统计信息
+     */
+    GCStats GetStats() const;
+    
+    /**
+     * @brief 获取当前状态
+     */
+    GCState GetState() const { return state_; }
+    
+    /**
+     * @brief 获取总字节数
+     */
+    Size GetTotalBytes() const { return total_bytes_; }
+    
+    /**
+     * @brief 获取对象数量
+     */
+    Size GetObjectCount() const { return object_count_; }
+    
+    /* ====================================================================== */
+    /* 调试和诊断 */
+    /* ====================================================================== */
+    
+    /**
+     * @brief 转储统计信息
+     */
+    void DumpStats() const;
+    
+    /**
+     * @brief 转储对象信息
+     */
+    void DumpObjects() const;
+    
+    /**
+     * @brief 检查一致性
+     */
+    bool CheckConsistency() const;
+    
+    /**
+     * @brief 释放所有对象
+     */
+    void FreeAllObjects();
+
+private:
     /* ====================================================================== */
     /* 成员变量 */
     /* ====================================================================== */
     
-    // 配置和状态
+    VirtualMachine* vm_;                        // 关联的虚拟机
     GCConfig config_;                           // GC配置
-    GCState state_;                             // 当前GC状态
-    Size threshold_;                            // GC触发阈值
+    GCState state_;                             // 当前状态
+    
+    // 内存统计
+    Size total_bytes_;                          // 总分配字节数
+    Size gc_threshold_;                         // GC触发阈值
+    
+    // 时间统计
+    std::chrono::steady_clock::time_point last_collection_time_;
+    std::chrono::steady_clock::time_point pause_start_time_;
+    Size collection_count_;
     
     // 对象管理
-    GCObject* all_objects_;                     // 所有对象链表
-    std::unordered_set<GCObject*> gray_objects_; // 灰色对象集合
-    std::vector<GCObject*> to_finalize_;        // 待终结对象
-    std::vector<WeakTableObject*> weak_tables_; // 弱引用表
+    Size object_count_;                         // 对象总数
+    GCObject* all_objects_;                     // 所有对象链表头
+    GCObject* gray_list_;                       // 灰色对象列表头
+    Size gray_count_;                           // 灰色对象数量
     
-    // 统计信息（原子操作确保线程安全）
-    std::atomic<Size> allocated_bytes_;         // 已分配字节数
-    std::atomic<Size> total_objects_;           // 对象总数
-    std::atomic<Size> collection_count_;        // 回收次数
-    GCStatistics statistics_;                   // 详细统计
+    // 清除状态
+    GCObject* sweep_current_;                   // 当前清除位置
     
-    // 增量GC状态
-    std::vector<GCObject*>::iterator sweep_iterator_; // 清除迭代器
-    Size incremental_debt_;                     // 增量债务
+    // 终结列表
+    std::vector<GCObject*> finalization_list_; // 待终结对象列表
     
-    // 回调函数
-    ResurrectionCallback resurrection_callback_; // 对象复活回调
+    // 统计信息
+    GCStats stats_;
     
-    // 并发控制
-    mutable std::mutex allocation_mutex_;       // 分配互斥锁
-    mutable std::mutex gc_mutex_;               // GC互斥锁
-    
-    // 性能监控
-    std::chrono::high_resolution_clock::time_point last_gc_time_;
+    // 线程安全
+    mutable std::mutex gc_mutex_;
 };
 
 /* ========================================================================== */

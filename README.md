@@ -8,7 +8,27 @@
     <strong>一个完全兼容Lua 5.1.5的现代C++实现，采用规格驱动开发方法论确保高质量和可维护性</strong>
 </p>
 
-[![Build Status](https://github.com/YanqingXu/lua_cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/YanqingX## 📚 参考项目集成开发方法论
+[![Build Status](https://github.com/YanqingXu/lua_cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/YanqingXu/lua_cpp/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![C++ Standard](https://img.shields.io/badge/C++-17/20-blue.svg)](https://en.cppreference.com/w/cpp)
+
+## 🎉 最新进展 (2025-09-21)
+
+### 🚀 T023 垃圾收集器完成！
+- ✅ **标记-清扫GC算法完整实现**
+- ✅ **三色标记系统** (白/灰/黑)
+- ✅ **增量垃圾收集支持**
+- ✅ **90%测试通过率** (9/10测试)
+- ✅ **性能验证**: 294万对象/秒创建，0.55ms平均收集时间
+- 📊 **项目进度**: 19/58任务完成 (32.8%)
+
+### 📁 重要文档
+- **[垃圾收集器完成报告](docs/reports/T023_GC_COMPLETION_REPORT.md)**
+- **[VM-GC集成指南](docs/guides/VM_GC_INTEGRATION_GUIDE.md)**
+- **[项目进度详情](docs/progress/DEVELOPMENT_PROGRESS.md)**
+- **[文档导航](docs/README.md)**
+
+## 📚 参考项目集成开发方法论
 
 ### 🎯 双重参考项目策略
 

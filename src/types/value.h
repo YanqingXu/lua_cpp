@@ -27,16 +27,7 @@ class LuaUserdata;
 /* Lua值类型枚举 */
 /* ========================================================================== */
 
-enum class LuaType {
-    Nil,
-    Boolean,
-    Number,
-    String,
-    Table,
-    Function,
-    Userdata,
-    Thread
-};
+// LuaType已在lua_common.h中定义，此处不重复定义
 
 /* ========================================================================== */
 /* Lua值类 */
