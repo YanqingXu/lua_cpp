@@ -8,9 +8,9 @@
 #ifndef LUA_LEXER_H
 #define LUA_LEXER_H
 
-#include "lexer/token.h"
-#include "core/lua_common.h"
-#include "core/lua_errors.h"
+#include "token.h"
+#include "../core/lua_common.h"
+#include "../core/lua_errors.h"
 #include <string>
 #include <string_view>
 #include <memory>
@@ -416,6 +416,18 @@ private:
      */
     char ProcessEscapeSequence();
 
+    /**
+     * @brief 读取操作符或分隔符Token
+     * @return 操作符或分隔符Token
+     */
+    Token ReadOperatorOrDelimiter();
+
+    /**
+     * @brief 前瞻下一个字符
+     * @return 下一个字符，不消费它
+     */
+    int PeekChar() const;
+
     /* 实用方法 */
 
     /**
@@ -484,11 +496,6 @@ private:
 /* ========================================================================== */
 /* 常量定义 */
 /* ========================================================================== */
-
-// 特殊字符常量
-constexpr int EOZ = -1;               // 文件结束字符
-constexpr char DECIMAL_POINT = '.';   // 默认小数点
-constexpr Size DEFAULT_TAB_WIDTH = 8; // 默认制表符宽度
 
 // 缓冲区大小常量
 constexpr Size INITIAL_BUFFER_SIZE = 256;     // 初始缓冲区大小

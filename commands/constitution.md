@@ -1,68 +1,94 @@
 ---
-description: Create or update the project constitution from interactive or provided principle inputs, ensuring all dependent templates stay in sync.
-# (No scripts section: constitution edits are manual authoring assisted by the agent)
+description: "建立现代C++版Lua解释器的项目治理原则和开发指导方针"
 ---
 
-You are updating the project constitution at `/memory/constitution.md`. This file is a TEMPLATE containing placeholder tokens in square brackets (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`). Your job is to (a) collect/derive concrete values, (b) fill the template precisely, and (c) propagate any amendments across dependent artifacts.
+# /constitution - 项目宪法建立
 
-Follow this execution flow:
+你正在参与一个现代C++版本的Lua解释器项目开发。使用这个提示来建立项目的核心原则和开发指导方针。
 
-1. Load the existing constitution template at `/memory/constitution.md`.
-   - Identify every placeholder token of the form `[ALL_CAPS_IDENTIFIER]`.
-   **IMPORTANT**: The user might require less or more principles than the ones used in the template. If a number is specified, respect that - follow the general template. You will update the doc accordingly.
+## 项目背景
 
-2. Collect/derive values for placeholders:
-   - If user input (conversation) supplies a value, use it.
-   - Otherwise infer from existing repo context (README, docs, prior constitution versions if embedded).
-   - For governance dates: `RATIFICATION_DATE` is the original adoption date (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes are made, otherwise keep previous.
-   - `CONSTITUTION_VERSION` must increment according to semantic versioning rules:
-     * MAJOR: Backward incompatible governance/principle removals or redefinitions.
-     * MINOR: New principle/section added or materially expanded guidance.
-     * PATCH: Clarifications, wording, typo fixes, non-semantic refinements.
-   - If version bump type ambiguous, propose reasoning before finalizing.
+- **参考项目1**: `lua_c_analysis` - Lua 5.1.5的深度中文注释版，提供完整的技术文档和实现分析
+- **参考项目2**: `lua_with_cpp` - 现有的C++版Lua解释器半成品，约80%功能已完成，提供现代C++架构基础
+- **项目目标**: 构建一个生产级、现代化的C++版Lua 5.1.5解释器，实现完全兼容
 
-3. Draft the updated constitution content:
-   - Replace every placeholder with concrete text (no bracketed tokens left except intentionally retained template slots that the project has chosen not to define yet—explicitly justify any left).
-   - Preserve heading hierarchy and comments can be removed once replaced unless they still add clarifying guidance.
-   - Ensure each Principle section: succinct name line, paragraph (or bullet list) capturing non‑negotiable rules, explicit rationale if not obvious.
-   - Ensure Governance section lists amendment procedure, versioning policy, and compliance review expectations.
+## 需要建立的核心原则
 
-4. Consistency propagation checklist (convert prior checklist into active validations):
-   - Read `/templates/plan-template.md` and ensure any "Constitution Check" or rules align with updated principles.
-   - Read `/templates/spec-template.md` for scope/requirements alignment—update if constitution adds/removes mandatory sections or constraints.
-   - Read `/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
-   - Read each command file in `/templates/commands/*.md` (including this one) to verify no outdated references (agent-specific names like CLAUDE only) remain when generic guidance is required.
-   - Read any runtime guidance docs (e.g., `README.md`, `docs/quickstart.md`, or agent-specific guidance files if present). Update references to principles changed.
+### 1. 代码质量标准
+- **现代C++标准**: 严格采用C++17/20最佳实践和现代特性
+- **内存管理**: 全面使用RAII内存管理和智能指针，禁止原始指针
+- **类型安全**: 实现类型安全和异常安全设计，使用强类型系统
+- **性能优化**: 应用零成本抽象和编译时优化技术
+- **代码风格**: 统一的编码规范，使用clang-format自动格式化
 
-5. Produce a Sync Impact Report (prepend as an HTML comment at top of the constitution file after update):
-   - Version change: old → new
-   - List of modified principles (old title → new title if renamed)
-   - Added sections
-   - Removed sections
-   - Templates requiring updates (✅ updated / ⚠ pending) with file paths
-   - Follow-up TODOs if any placeholders intentionally deferred.
+### 2. 测试和质量保证
+- **测试覆盖率**: 要求100%自动化测试覆盖率，零容忍未测试代码
+- **性能基准**: 建立性能基准测试和回归检测机制
+- **兼容性验证**: 确保与Lua 5.1.5的完全兼容性，通过官方测试套件
+- **内存安全**: 强制进行内存安全和泄漏检测，使用Valgrind/AddressSanitizer
+- **静态分析**: 集成Clang-Tidy、PVS-Studio等静态分析工具
 
-6. Validation before final output:
-   - No remaining unexplained bracket tokens.
-   - Version line matches report.
-   - Dates ISO format YYYY-MM-DD.
-   - Principles are declarative, testable, and free of vague language ("should" → replace with MUST/SHOULD rationale where appropriate).
+### 3. 性能要求
+- **响应时间**: 目标微秒级响应时间，函数调用 < 1μs
+- **内存效率**: 内存使用优化，智能指针开销最小化
+- **零拷贝设计**: 在可能的情况下采用零拷贝设计原则
+- **性能对标**: 与原生Lua 5.1.5性能对等或更优
+- **启动时间**: 解释器启动时间 < 100ms
 
-7. Write the completed constitution back to `/memory/constitution.md` (overwrite).
+### 4. 兼容性要求
+- **语法兼容**: 严格遵循Lua 5.1.5语法和语义规范
+- **API兼容**: C API接口完全兼容，支持现有Lua扩展
+- **行为一致**: 标准库行为与官方Lua完全一致
+- **错误处理**: 错误处理机制和错误消息格式兼容
+- **字节码**: 支持Lua 5.1.5字节码格式（可选）
 
-8. Output a final summary to the user with:
-   - New version and bump rationale.
-   - Any files flagged for manual follow-up.
-   - Suggested commit message (e.g., `docs: amend constitution to vX.Y.Z (principle additions + governance update)`).
+### 5. 开发流程规范
+- **测试驱动开发**: 严格执行TDD，先写测试后写实现
+- **代码审查**: 所有代码必须经过同行审查才能合并
+- **持续集成**: 建立CI/CD流水线，自动化构建、测试、部署
+- **文档同步**: 代码和文档必须同步更新，不允许文档滞后
+- **版本控制**: 使用语义化版本，清晰的提交消息规范
 
-Formatting & Style Requirements:
-- Use Markdown headings exactly as in the template (do not demote/promote levels).
-- Wrap long rationale lines to keep readability (<100 chars ideally) but do not hard enforce with awkward breaks.
-- Keep a single blank line between sections.
-- Avoid trailing whitespace.
+## 技术架构原则
 
-If the user supplies partial updates (e.g., only one principle revision), still perform validation and version decision steps.
+### 现代C++设计哲学
+- **RAII优先**: 优先使用栈分配和RAII，资源管理自动化
+- **智能指针**: 使用std::unique_ptr、std::shared_ptr管理动态内存
+- **模板元编程**: 利用模板元编程实现编译时类型安全和优化
+- **移动语义**: 充分利用移动语义优化性能，减少不必要的拷贝
+- **现代STL**: 优先使用std::variant、std::optional等现代STL组件
 
-If critical info missing (e.g., ratification date truly unknown), insert `TODO(<FIELD_NAME>): explanation` and include in the Sync Impact Report under deferred items.
+### 模块化架构设计
+- **清晰边界**: 定义清晰的模块边界和接口，高内聚低耦合
+- **依赖注入**: 实现依赖注入和控制反转，提高可测试性
+- **插件架构**: 支持插件化架构，便于功能扩展
+- **设计原则**: 遵循单一职责、开闭原则等SOLID设计原则
+- **接口抽象**: 面向接口编程，降低模块间耦合度
 
-Do not create a new template; always operate on the existing `/memory/constitution.md` file.
+### 错误处理和调试策略
+- **异常安全**: 提供强异常安全保证，确保程序状态一致性
+- **RAII错误处理**: 利用RAII模式进行资源管理和错误处理
+- **错误传播**: 建立清晰的错误传播机制和错误码体系
+- **调试支持**: 提供完整的调试信息和栈跟踪功能
+- **日志系统**: 集成结构化日志系统，支持不同级别的日志输出
+
+## 质量保证体系
+
+### 自动化质量检查
+- **编译警告**: 零警告编译，开启所有编译器警告
+- **静态分析**: 集成多种静态分析工具的自动化检查
+- **内存检测**: 自动化内存泄漏和越界访问检测
+- **性能回归**: 自动化性能回归测试和报警机制
+- **代码覆盖**: 实时代码覆盖率监控和报告
+
+### 文档和知识管理
+- **API文档**: 使用Doxygen自动生成完整的API文档
+- **架构文档**: 维护清晰的架构设计文档和决策记录
+- **使用示例**: 提供丰富的使用示例和最佳实践指南
+- **故障排除**: 建立常见问题和故障排除指南
+- **知识传承**: 确保关键技术知识的文档化和传承
+- **报告文档管理**: 任务完成时创建的临时报告文档（如整理报告、完成报告等）统一存放在 `temp/` 目录中，保持项目根目录整洁
+
+请根据以上要求创建详细的项目宪法文档，建立完善的开发原则和技术标准体系。这个宪法将指导整个项目的开发过程，确保交付高质量的现代C++版Lua解释器。
+
+使用 `{SCRIPT}` 来执行项目脚本，使用 `$ARGUMENTS` 来处理命令参数。

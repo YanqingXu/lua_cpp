@@ -111,9 +111,16 @@ constexpr bool IsReservedWord(TokenType type) {
  * @return 如果是操作符则返回true
  */
 constexpr bool IsOperator(TokenType type) {
-    return (static_cast<int>(type) >= '+' && static_cast<int>(type) <= '>') ||
-           (static_cast<int>(type) >= static_cast<int>(TokenType::Concat) &&
-            static_cast<int>(type) <= static_cast<int>(TokenType::NotEqual));
+    // 明确列出操作符，避免与分隔符混淆
+    int t = static_cast<int>(type);
+    bool is_single_char_operator = (t == '+' || t == '-' || t == '*' || t == '/' || 
+                                  t == '%' || t == '^' || t == '#' || t == '<' || 
+                                  t == '>' || t == '=');
+    
+    bool is_multi_char_operator = (static_cast<int>(type) >= static_cast<int>(TokenType::Concat) &&
+                                 static_cast<int>(type) <= static_cast<int>(TokenType::NotEqual));
+    
+    return is_single_char_operator || is_multi_char_operator;
 }
 
 /**

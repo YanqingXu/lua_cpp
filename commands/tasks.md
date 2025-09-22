@@ -1,61 +1,135 @@
 ---
-description: Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.
-scripts:
-  sh: scripts/bash/check-task-prerequisites.sh --json
-  ps: scripts/powershell/check-task-prerequisites.ps1 -Json
+description: "从技术实现计划生成详细的开发任务列表"
 ---
 
-Given the context provided as an argument, do this:
+# /tasks - 开发任务分解
 
-1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
-2. Load and analyze available design documents:
-   - Always read plan.md for tech stack and libraries
-   - IF EXISTS: Read data-model.md for entities
-   - IF EXISTS: Read contracts/ for API endpoints
-   - IF EXISTS: Read research.md for technical decisions
-   - IF EXISTS: Read quickstart.md for test scenarios
+使用这个提示来从技术实现计划生成详细的、可执行的开发任务列表。
 
-   Note: Not all projects have all documents. For example:
-   - CLI tools might not have contracts/
-   - Simple libraries might not need data-model.md
-   - Generate tasks based on what's available
+## 任务分解原则
 
-3. Generate tasks following the template:
-   - Use `/templates/tasks-template.md` as the base
-   - Replace example tasks with actual tasks based on:
-     * **Setup tasks**: Project init, dependencies, linting
-     * **Test tasks [P]**: One per contract, one per integration scenario
-     * **Core tasks**: One per entity, service, CLI command, endpoint
-     * **Integration tasks**: DB connections, middleware, logging
-     * **Polish tasks [P]**: Unit tests, performance, docs
+### 基于现有项目评估
+- **lua_with_cpp评估**: 分析现有实现的完成度和需要改进的部分
+- **lua_c_analysis参考**: 提取关键技术洞察转化为具体任务
+- **增量开发**: 在现有基础上迭代改进，避免重复开发
 
-4. Task generation rules:
-   - Each contract file → contract test task marked [P]
-   - Each entity in data-model → model creation task marked [P]
-   - Each endpoint → implementation task (not parallel if shared files)
-   - Each user story → integration test marked [P]
-   - Different files = can be parallel [P]
-   - Same file = sequential (no [P])
+### 任务分类和优先级
 
-5. Order tasks by dependencies:
-   - Setup before everything
-   - Tests before implementation (TDD)
-   - Models before services
-   - Services before endpoints
-   - Core before integration
-   - Everything before polish
+#### P0 - 关键路径任务 (阻塞其他任务)
+- 基础架构设置
+- 核心接口定义
+- 关键模块重构
 
-6. Include parallel execution examples:
-   - Group [P] tasks that can run together
-   - Show actual Task agent commands
+#### P1 - 主要功能任务 (影响主要特性)
+- VM性能优化
+- 标准库扩展
+- 测试框架完善
 
-7. Create FEATURE_DIR/tasks.md with:
-   - Correct feature name from implementation plan
-   - Numbered tasks (T001, T002, etc.)
-   - Clear file paths for each task
-   - Dependency notes
-   - Parallel execution guidance
+#### P2 - 增强功能任务 (提升用户体验)
+- 调试工具
+- 错误处理改进
+- 文档和示例
 
-Context for task generation: {ARGS}
+#### P3 - 优化任务 (锦上添花)
+- 性能微调
+- 代码清理
+- 额外特性
 
-The tasks.md should be immediately executable - each task must be specific enough that an LLM can complete it without additional context.
+### 任务依赖关系管理
+
+#### 串行依赖 (必须按顺序执行)
+- 基础架构 → 核心模块 → 集成测试
+- 接口定义 → 实现开发 → 单元测试
+
+#### 并行机会 (可以同时开发)
+- 不同模块的功能开发
+- 文档编写与代码开发
+- 测试用例编写与功能实现
+
+## 任务模板格式
+
+### 标准任务描述
+```markdown
+### [TASK-ID] 任务标题
+
+**优先级**: P0/P1/P2/P3
+**预估工时**: X天
+**依赖任务**: [相关任务ID]
+**负责模块**: [模块名称]
+
+#### 任务描述
+具体的任务目标和实现要求
+
+#### 验收标准
+- [ ] 标准1: 具体可测试的验收条件
+- [ ] 标准2: 具体可测试的验收条件
+- [ ] 标准3: 具体可测试的验收条件
+
+#### 技术要求
+- 技术实现的具体要求
+- 性能指标（如适用）
+- 兼容性要求
+
+#### 测试要求
+- 单元测试覆盖率要求
+- 集成测试场景
+- 性能测试指标
+
+#### 文档要求
+- 需要更新的文档
+- API文档要求
+- 使用示例要求
+```
+
+## 工作流程集成
+
+### 与Spec-Kit的协调
+1. **规范对照**: 每个任务都要对应spec.md中的需求
+2. **计划验证**: 任务执行要符合plan.md的技术方案
+3. **质量保证**: 每个任务完成要通过双重验证
+
+### 质量门禁集成
+```bash
+# 任务完成检查流程
+./scripts/verify_task_completion.sh [TASK-ID]
+
+# 包含以下检查项：
+# 1. 代码编译通过
+# 2. 单元测试100%通过
+# 3. 静态分析无警告
+# 4. lua_c_analysis行为验证通过
+# 5. lua_with_cpp质量标准达标
+# 6. 文档更新完成
+```
+
+## 任务生成指导
+
+### 基于特性的任务分解
+1. **读取feature spec.md**: 理解功能需求和验收标准
+2. **分析plan.md**: 了解技术实现方案和架构设计
+3. **评估现有代码**: 确定需要修改、增加或重构的部分
+4. **生成任务列表**: 按优先级和依赖关系排序
+
+### 任务粒度控制
+- **单个任务工时**: 不超过3-5天
+- **功能完整性**: 每个任务产出可独立测试的功能
+- **依赖最小化**: 减少任务间的强依赖关系
+- **并行最大化**: 尽可能创造并行开发机会
+
+### 验证机制嵌入
+每个任务都必须包含：
+- **编译验证**: 代码能够正确编译
+- **功能验证**: 功能按预期工作
+- **性能验证**: 满足性能指标要求
+- **兼容性验证**: 通过lua_c_analysis对照测试
+- **质量验证**: 符合lua_with_cpp代码标准
+
+使用 `{SCRIPT}` 来执行任务管理脚本，使用 `$ARGUMENTS` 来处理特定的任务生成参数。
+
+请根据feature的spec.md和plan.md内容，生成详细的、可执行的任务列表，确保：
+1. 每个任务都有明确的验收标准
+2. 任务之间的依赖关系清晰
+3. 包含完整的测试和文档要求
+4. 集成双重验证机制
+5. 符合现代C++开发最佳实践
+6. **任务完成报告管理**: 任务完成时生成的临时报告文档（如任务总结、完成报告等）应统一存放在 `temp/` 目录中，避免污染项目根目录
