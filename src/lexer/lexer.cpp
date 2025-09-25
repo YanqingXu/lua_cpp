@@ -7,6 +7,7 @@
  */
 
 #include "lexer.h"
+#include "lexer_errors.h"
 #include <algorithm>
 #include <cctype>
 #include <sstream>
@@ -169,7 +170,7 @@ LexicalError::LexicalError(const std::string& message, Size line, Size column, s
 Lexer::Lexer(std::unique_ptr<InputStream> input, const LexerConfig& config)
     : input_(std::move(input)), config_(config), current_char_(0), 
       current_line_(1), current_column_(1), last_line_(1),
-      has_lookahead_(false), token_count_(0) {
+      has_lookahead_(false), token_count_(0), collect_errors_(false), start_offset_(0) {
     
     // 读取第一个字符
     NextChar();
@@ -349,7 +350,21 @@ Token Lexer::ReadOperatorOrDelimiter() {
     // 未识别字符
     std::stringstream ss;
     ss << "Unexpected character: '" << ch << "' (ASCII " << static_cast<int>(ch) << ")";
-    throw CreateError(ss.str());
+    
+    LexicalError error = CreateDetailedError(LexicalErrorType::INVALID_CHARACTER, ss.str());
+    ReportError(error);
+    
+    // 尝试错误恢复
+    if (TryRecover(error)) {
+        // 恢复成功，继续分析
+        return DoNextToken();
+    } else {
+        // 恢复失败，返回错误Token或抛出异常
+        if (!collect_errors_) {
+            throw error;
+        }
+        return Token::CreateEndOfSource(start_pos);
+    }
 }
 
 /* ========================================================================== */
@@ -447,32 +462,98 @@ int Lexer::CheckLongSeparator() {
 Token Lexer::ReadNumber() {
     TokenPosition start_pos = GetCurrentPosition();
     buffer_.Clear();
+    bool has_decimal = false;
+    bool has_exponent = false;
+    bool is_hex = false;
     
-    // 读取数字部分
-    while (IsDigit(current_char_)) {
-        buffer_.AppendChar(current_char_);
+    // 检查十六进制数
+    if (current_char_ == '0' && (PeekChar() == 'x' || PeekChar() == 'X')) {
+        is_hex = true;
+        buffer_.AppendChar(current_char_); // '0'
         NextChar();
-    }
-    
-    // 检查小数点
-    if (current_char_ == config_.decimal_point) {
-        buffer_.AppendChar(current_char_);
+        buffer_.AppendChar(current_char_); // 'x' or 'X'
         NextChar();
         
+        // 十六进制数必须有至少一个十六进制位
+        if (!IsHexDigit(current_char_)) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::INCOMPLETE_HEX_NUMBER, error_location, "0x");
+            if (!TryRecover(LexicalErrorType::INCOMPLETE_HEX_NUMBER)) {
+                throw LexicalError(LexicalErrorType::INCOMPLETE_HEX_NUMBER, 
+                                 "Incomplete hexadecimal number", error_location);
+            }
+        }
+        
+        while (IsHexDigit(current_char_)) {
+            buffer_.AppendChar(current_char_);
+            NextChar();
+        }
+    } else {
+        // 读取数字部分
         while (IsDigit(current_char_)) {
             buffer_.AppendChar(current_char_);
             NextChar();
         }
     }
     
+    // 检查小数点
+    if (current_char_ == config_.decimal_point) {
+        if (has_decimal) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::MULTIPLE_DECIMAL_POINTS, error_location, 
+                       buffer_.ToString() + current_char_);
+            if (!TryRecover(LexicalErrorType::MULTIPLE_DECIMAL_POINTS)) {
+                throw LexicalError(LexicalErrorType::MULTIPLE_DECIMAL_POINTS, 
+                                 "Multiple decimal points in number", error_location);
+            }
+        }
+        has_decimal = true;
+        buffer_.AppendChar(current_char_);
+        NextChar();
+        
+        if (is_hex) {
+            // 十六进制浮点数
+            while (IsHexDigit(current_char_)) {
+                buffer_.AppendChar(current_char_);
+                NextChar();
+            }
+        } else {
+            while (IsDigit(current_char_)) {
+                buffer_.AppendChar(current_char_);
+                NextChar();
+            }
+        }
+    }
+    
     // 检查科学计数法
-    if (current_char_ == 'e' || current_char_ == 'E') {
+    if ((is_hex && (current_char_ == 'p' || current_char_ == 'P')) ||
+        (!is_hex && (current_char_ == 'e' || current_char_ == 'E'))) {
+        if (has_exponent) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::INVALID_NUMBER_FORMAT, error_location, 
+                       buffer_.ToString() + current_char_);
+            if (!TryRecover(LexicalErrorType::INVALID_NUMBER_FORMAT)) {
+                throw LexicalError(LexicalErrorType::INVALID_NUMBER_FORMAT, 
+                                 "Invalid number format", error_location);
+            }
+        }
+        has_exponent = true;
         buffer_.AppendChar(current_char_);
         NextChar();
         
         if (current_char_ == '+' || current_char_ == '-') {
             buffer_.AppendChar(current_char_);
             NextChar();
+        }
+        
+        if (!IsDigit(current_char_)) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::INCOMPLETE_EXPONENT, error_location, 
+                       buffer_.ToString());
+            if (!TryRecover(LexicalErrorType::INCOMPLETE_EXPONENT)) {
+                throw LexicalError(LexicalErrorType::INCOMPLETE_EXPONENT, 
+                                 "Incomplete exponent in number", error_location);
+            }
         }
         
         while (IsDigit(current_char_)) {
@@ -483,9 +564,18 @@ Token Lexer::ReadNumber() {
     
     // 转换为数字
     std::string number_str = buffer_.ToString();
-    double value = std::stod(number_str);
-    
-    return Token::CreateNumber(value, start_pos.line, start_pos.column);
+    try {
+        double value = std::stod(number_str);
+        return Token::CreateNumber(value, start_pos.line, start_pos.column);
+    } catch (const std::exception&) {
+        ErrorLocation error_location = CreateDetailedError(start_pos);
+        ReportError(LexicalErrorType::INVALID_NUMBER_FORMAT, error_location, number_str);
+        if (!TryRecover(LexicalErrorType::INVALID_NUMBER_FORMAT)) {
+            throw LexicalError(LexicalErrorType::INVALID_NUMBER_FORMAT, 
+                             "Invalid number format: " + number_str, error_location);
+        }
+        return Token::CreateNumber(0.0, start_pos.line, start_pos.column); // 默认值
+    }
 }
 
 Token Lexer::ReadString(char quote) {
@@ -495,10 +585,34 @@ Token Lexer::ReadString(char quote) {
     NextChar(); // 跳过开始引号
     
     while (current_char_ != quote && current_char_ != EOZ) {
+        if (current_char_ == '\n') {
+            // 字符串中的换行符通常是错误的
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::UNESCAPED_NEWLINE_IN_STRING, error_location, 
+                       std::string(1, quote));
+            if (!TryRecover(LexicalErrorType::UNESCAPED_NEWLINE_IN_STRING)) {
+                throw LexicalError(LexicalErrorType::UNESCAPED_NEWLINE_IN_STRING, 
+                                 "Unescaped newline in string literal", error_location);
+            }
+        }
+        
         if (current_char_ == '\\') {
             NextChar();
-            char escaped = ProcessEscapeSequence();
-            buffer_.AppendChar(escaped);
+            try {
+                char escaped = ProcessEscapeSequence();
+                buffer_.AppendChar(escaped);
+            } catch (const LexicalError& e) {
+                // 转发逃逸序列错误
+                ReportError(e.GetErrorType(), CreateDetailedError(start_pos), 
+                           std::string("\\") + current_char_);
+                if (!TryRecover(e.GetErrorType())) {
+                    throw;
+                }
+                // 恢复：跳过无效的逃逸序列
+                if (current_char_ != EOZ) {
+                    NextChar();
+                }
+            }
         } else {
             buffer_.AppendChar(current_char_);
             NextChar();
@@ -506,7 +620,14 @@ Token Lexer::ReadString(char quote) {
     }
     
     if (current_char_ != quote) {
-        throw CreateError("Unterminated string literal");
+        ErrorLocation error_location = CreateDetailedError(start_pos);
+        ReportError(LexicalErrorType::UNTERMINATED_STRING, error_location, 
+                   std::string(1, quote) + buffer_.ToString());
+        if (!TryRecover(LexicalErrorType::UNTERMINATED_STRING)) {
+            throw LexicalError(LexicalErrorType::UNTERMINATED_STRING, 
+                             "Unterminated string literal", error_location);
+        }
+        return Token::CreateString(buffer_.ToString(), start_pos.line, start_pos.column);
     }
     
     NextChar(); // 跳过结束引号
@@ -517,6 +638,7 @@ Token Lexer::ReadString(char quote) {
 Token Lexer::ReadLongString(Size sep_length) {
     TokenPosition start_pos = GetCurrentPosition();
     buffer_.Clear();
+    size_t content_length = 0;
     
     // 跳过开始的换行符
     if (current_char_ == '\n') {
@@ -530,24 +652,74 @@ Token Lexer::ReadLongString(Size sep_length) {
                 return Token::CreateString(buffer_.ToString(), start_pos.line, start_pos.column);
             }
         }
+        
+        // 检查长字符串长度限制
+        content_length++;
+        if (content_length > config_.max_string_length) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::STRING_TOO_LONG, error_location, 
+                       std::to_string(content_length));
+            if (!TryRecover(LexicalErrorType::STRING_TOO_LONG)) {
+                throw LexicalError(LexicalErrorType::STRING_TOO_LONG, 
+                                 "Long string exceeds maximum length", error_location);
+            }
+            // 恢复：截断字符串
+            break;
+        }
+        
         buffer_.AppendChar(current_char_);
         NextChar();
     }
     
-    throw CreateError("Unterminated long string");
+    ErrorLocation error_location = CreateDetailedError(start_pos);
+    ReportError(LexicalErrorType::UNTERMINATED_LONG_STRING, error_location, 
+               std::string(sep_length + 2, '='));
+    if (!TryRecover(LexicalErrorType::UNTERMINATED_LONG_STRING)) {
+        throw LexicalError(LexicalErrorType::UNTERMINATED_LONG_STRING, 
+                         "Unterminated long string", error_location);
+    }
+    
+    // 恢复模式：返回部分解析的字符串
+    return Token::CreateString(buffer_.ToString(), start_pos.line, start_pos.column);
 }
 
 Token Lexer::ReadName() {
     TokenPosition start_pos = GetCurrentPosition();
     buffer_.Clear();
+    size_t name_length = 0;
     
     // 读取标识符
     while (IsAlphaNumeric(current_char_)) {
+        // 检查标识符长度限制
+        name_length++;
+        if (name_length > config_.max_identifier_length) {
+            ErrorLocation error_location = CreateDetailedError(start_pos);
+            ReportError(LexicalErrorType::IDENTIFIER_TOO_LONG, error_location, 
+                       buffer_.ToString() + current_char_);
+            if (!TryRecover(LexicalErrorType::IDENTIFIER_TOO_LONG)) {
+                throw LexicalError(LexicalErrorType::IDENTIFIER_TOO_LONG, 
+                                 "Identifier exceeds maximum length", error_location);
+            }
+            // 恢复：截断标识符
+            break;
+        }
+        
         buffer_.AppendChar(current_char_);
         NextChar();
     }
     
     std::string name = buffer_.ToString();
+    
+    // 检查空标识符
+    if (name.empty()) {
+        ErrorLocation error_location = CreateDetailedError(start_pos);
+        ReportError(LexicalErrorType::EMPTY_IDENTIFIER, error_location, "");
+        if (!TryRecover(LexicalErrorType::EMPTY_IDENTIFIER)) {
+            throw LexicalError(LexicalErrorType::EMPTY_IDENTIFIER, 
+                             "Empty identifier", error_location);
+        }
+        return Token::CreateName("_error_", start_pos.line, start_pos.column);
+    }
     
     // 检查是否为关键字
     TokenType keyword = ReservedWords::Lookup(name);
@@ -559,6 +731,8 @@ Token Lexer::ReadName() {
 }
 
 char Lexer::ProcessEscapeSequence() {
+    TokenPosition pos = GetCurrentPosition();
+    
     switch (current_char_) {
         case 'n': NextChar(); return '\n';
         case 't': NextChar(); return '\t';
@@ -571,10 +745,117 @@ char Lexer::ProcessEscapeSequence() {
         case '"': NextChar(); return '"';
         case '\'': NextChar(); return '\'';
         case '\n': NextChar(); return '\n';
-        default:
+        case '0': case '1': case '2': case '3':
+        case '4': case '5': case '6': case '7': {
+            // 八进制转义序列
+            int value = current_char_ - '0';
+            NextChar();
+            if (IsDigit(current_char_) && current_char_ <= '7') {
+                value = value * 8 + (current_char_ - '0');
+                NextChar();
+                if (IsDigit(current_char_) && current_char_ <= '7') {
+                    value = value * 8 + (current_char_ - '0');
+                    NextChar();
+                }
+            }
+            if (value > 255) {
+                ErrorLocation error_location = CreateDetailedError(pos);
+                ReportError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, error_location, 
+                           "\\" + std::to_string(value));
+                if (!TryRecover(LexicalErrorType::INVALID_ESCAPE_SEQUENCE)) {
+                    throw LexicalError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, 
+                                     "Octal escape sequence out of range", error_location);
+                }
+                return static_cast<char>(value & 0xFF); // 截断到有效范围
+            }
+            return static_cast<char>(value);
+        }
+        case 'x': {
+            // 十六进制转义序列
+            NextChar();
+            if (!IsHexDigit(current_char_)) {
+                ErrorLocation error_location = CreateDetailedError(pos);
+                ReportError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, error_location, 
+                           "\\x" + std::string(1, current_char_));
+                if (!TryRecover(LexicalErrorType::INVALID_ESCAPE_SEQUENCE)) {
+                    throw LexicalError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, 
+                                     "Invalid hexadecimal escape sequence", error_location);
+                }
+                return 'x'; // 恢复：返回字面字符
+            }
+            
+            int value = HexDigitValue(current_char_);
+            NextChar();
+            if (IsHexDigit(current_char_)) {
+                value = value * 16 + HexDigitValue(current_char_);
+                NextChar();
+            }
+            return static_cast<char>(value);
+        }
+        case 'u': {
+            // Unicode转义序列 (简化版)
+            NextChar();
+            if (current_char_ != '{') {
+                ErrorLocation error_location = CreateDetailedError(pos);
+                ReportError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, error_location, 
+                           "\\u" + std::string(1, current_char_));
+                if (!TryRecover(LexicalErrorType::INVALID_ESCAPE_SEQUENCE)) {
+                    throw LexicalError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, 
+                                     "Invalid Unicode escape sequence", error_location);
+                }
+                return 'u'; // 恢复：返回字面字符
+            }
+            NextChar(); // 跳过 '{'
+            
+            int value = 0;
+            int digit_count = 0;
+            while (IsHexDigit(current_char_) && digit_count < 6) {
+                value = value * 16 + HexDigitValue(current_char_);
+                NextChar();
+                digit_count++;
+            }
+            
+            if (current_char_ != '}' || digit_count == 0) {
+                ErrorLocation error_location = CreateDetailedError(pos);
+                ReportError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, error_location, 
+                           "\\u{...}");
+                if (!TryRecover(LexicalErrorType::INVALID_ESCAPE_SEQUENCE)) {
+                    throw LexicalError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, 
+                                     "Invalid Unicode escape sequence", error_location);
+                }
+                return '?'; // 恢复：返回替代字符
+            }
+            NextChar(); // 跳过 '}'
+            
+            // 简化：只支持ASCII范围
+            if (value > 127) {
+                value = '?'; // 替代字符
+            }
+            return static_cast<char>(value);
+        }
+        case EOZ: {
+            ErrorLocation error_location = CreateDetailedError(pos);
+            ReportError(LexicalErrorType::INCOMPLETE_ESCAPE_SEQUENCE, error_location, "\\");
+            if (!TryRecover(LexicalErrorType::INCOMPLETE_ESCAPE_SEQUENCE)) {
+                throw LexicalError(LexicalErrorType::INCOMPLETE_ESCAPE_SEQUENCE, 
+                                 "Incomplete escape sequence at end of input", error_location);
+            }
+            return '\\'; // 恢复：返回反斜杠字面量
+        }
+        default: {
+            // 无效的转义序列
+            ErrorLocation error_location = CreateDetailedError(pos);
+            std::string sequence = "\\" + std::string(1, current_char_);
+            ReportError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, error_location, sequence);
+            if (!TryRecover(LexicalErrorType::INVALID_ESCAPE_SEQUENCE)) {
+                throw LexicalError(LexicalErrorType::INVALID_ESCAPE_SEQUENCE, 
+                                 "Invalid escape sequence: " + sequence, error_location);
+            }
+            
             char ch = current_char_;
             NextChar();
-            return ch;
+            return ch; // 恢复：返回字面字符
+        }
     }
 }
 
@@ -594,6 +875,17 @@ bool Lexer::IsHexDigit(int ch) {
     return IsDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
 }
 
+int Lexer::HexDigitValue(int ch) {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    } else if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    } else if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return 0; // 无效字符返回0
+}
+
 bool Lexer::IsAlphaNumeric(int ch) {
     return IsAlpha(ch) || IsDigit(ch);
 }
@@ -607,7 +899,39 @@ bool Lexer::IsNewline(int ch) {
 }
 
 LexicalError Lexer::CreateError(const std::string& message) const {
-    return LexicalError(message, GetCurrentPosition());
+    return CreateDetailedError(LexicalErrorType::UNKNOWN_ERROR, message);
+}
+
+LexicalError Lexer::CreateDetailedError(LexicalErrorType error_type, const std::string& message,
+                                         ErrorSeverity severity) const {
+    ErrorLocation location(current_line_, current_column_, GetCurrentOffset(), 1,
+                           GetSourceName(), GetCurrentLineText());
+    return LexicalError(error_type, message, location, severity);
+}
+
+void Lexer::ReportError(const LexicalError& error) {
+    if (collect_errors_) {
+        error_collector_.AddError(error);
+    } else {
+        throw error;
+    }
+}
+
+bool Lexer::TryRecover(const LexicalError& error) {
+    if (!collect_errors_) {
+        return false; // 不在错误收集模式下，不进行恢复
+    }
+    
+    RecoveryStrategy strategy = error.GetSuggestedRecovery();
+    auto advance = [this]() { NextChar(); };
+    
+    return ErrorRecovery::ExecuteRecovery(strategy, current_char_, advance);
+}
+
+std::string Lexer::GetCurrentLineText() const {
+    // 简化实现：返回空字符串
+    // 实际实现需要从输入流中获取当前行的完整文本
+    return "";
 }
 
 void Lexer::ValidateTokenLength() const {

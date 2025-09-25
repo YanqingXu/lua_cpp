@@ -162,21 +162,36 @@ struct TokenPosition {
     Size line;               // 行号 (从1开始)
     Size column;             // 列号 (从1开始)
     Size offset;             // 字符偏移 (从0开始)
-    std::string_view source; // 源文件名
+    Size length;             // Token长度
+    std::string source_name; // 源文件名 (不再使用string_view，避免生命周期问题)
 
-    TokenPosition() : line(1), column(1), offset(0) {}
+    TokenPosition() : line(1), column(1), offset(0), length(1) {}
     
-    TokenPosition(Size line, Size column, Size offset = 0, std::string_view source = "")
-        : line(line), column(column), offset(offset), source(source) {}
+    TokenPosition(Size line, Size column, Size offset = 0, Size length = 1, std::string_view source = "")
+        : line(line), column(column), offset(offset), length(length), source_name(source) {}
 
     bool operator==(const TokenPosition& other) const {
         return line == other.line && column == other.column && 
-               offset == other.offset && source == other.source;
+               offset == other.offset && length == other.length && source_name == other.source_name;
     }
 
     bool operator!=(const TokenPosition& other) const {
         return !(*this == other);
     }
+    
+    /**
+     * @brief 获取Token结束位置
+     * @return 结束位置的列号
+     */
+    Size GetEndColumn() const {
+        return column + length - 1;
+    }
+    
+    /**
+     * @brief 获取位置描述字符串
+     * @return 位置描述 (如 "file.lua:10:5")
+     */
+    std::string ToString() const;
 };
 
 /* ========================================================================== */
@@ -223,7 +238,7 @@ public:
     Size GetLine() const { return position_.line; }
     Size GetColumn() const { return position_.column; }
     Size GetOffset() const { return position_.offset; }
-    std::string_view GetSource() const { return position_.source; }
+    std::string_view GetSource() const { return position_.source_name; }
 
     /* 类型判断方法 */
     bool IsEndOfSource() const { return type_ == TokenType::EndOfSource; }

@@ -9,6 +9,7 @@
 #define LUA_LEXER_H
 
 #include "token.h"
+#include "lexer_errors.h"
 #include "../core/lua_common.h"
 #include "../core/lua_errors.h"
 #include <string>
@@ -42,6 +43,8 @@ struct LexerConfig {
     bool strict_mode = false;        // 严格模式（更严格的错误检查）
     Size max_token_length = 65536;   // 最大Token长度
     Size max_line_length = 1048576;  // 最大行长度
+    Size max_string_length = 1048576; // 最大字符串长度
+    Size max_identifier_length = 1024; // 最大标识符长度
 
     LexerConfig() = default;
 };
@@ -335,6 +338,32 @@ public:
      * @brief 重置统计信息
      */
     void ResetStatistics();
+    
+    /* 错误处理方法 */
+    
+    /**
+     * @brief 获取错误收集器
+     * @return 错误收集器引用
+     */
+    const ErrorCollector& GetErrorCollector() const { return error_collector_; }
+    
+    /**
+     * @brief 设置错误处理模式
+     * @param collect_errors 是否收集错误而不是立即抛出
+     */
+    void SetErrorCollectionMode(bool collect_errors) { collect_errors_ = collect_errors; }
+    
+    /**
+     * @brief 是否有错误
+     * @return 如果有错误则返回true
+     */
+    bool HasErrors() const { return error_collector_.HasErrors(); }
+    
+    /**
+     * @brief 获取错误报告
+     * @return 错误报告字符串
+     */
+    std::string GetErrorReport() const { return error_collector_.GenerateReport(); }
 
 private:
     /* 内部状态 */
@@ -352,6 +381,12 @@ private:
     
     TokenBuffer buffer_;                   // Token构建缓冲区
     Size token_count_;                     // 已处理的Token数量
+    
+    /* 错误处理状态 */
+    mutable ErrorCollector error_collector_;  // 错误收集器
+    bool collect_errors_;                  // 是否收集错误而不是立即抛出
+    Size start_offset_;                    // Token开始偏移
+    std::string current_line_text_;        // 当前行文本 (用于错误报告)
 
     /* 字符处理方法 */
     
@@ -452,6 +487,13 @@ private:
     static bool IsHexDigit(int ch);
 
     /**
+     * @brief 获取十六进制数字的值
+     * @param ch 十六进制数字字符
+     * @return 十六进制数字对应的数值 (0-15)
+     */
+    static int HexDigitValue(int ch);
+
+    /**
      * @brief 判断字符是否为字母数字或下划线
      * @param ch 要判断的字符
      * @return 如果是字母数字或下划线则返回true
@@ -478,6 +520,35 @@ private:
      * @return LexicalError对象
      */
     LexicalError CreateError(const std::string& message) const;
+    
+    /**
+     * @brief 创建详细错误对象
+     * @param error_type 错误类型
+     * @param message 错误消息
+     * @param severity 严重性级别
+     * @return LexicalError对象
+     */
+    LexicalError CreateDetailedError(LexicalErrorType error_type, const std::string& message,
+                                     ErrorSeverity severity = ErrorSeverity::ERROR) const;
+    
+    /**
+     * @brief 报告错误
+     * @param error 错误对象
+     */
+    void ReportError(const LexicalError& error);
+    
+    /**
+     * @brief 尝试错误恢复
+     * @param error 错误对象
+     * @return 是否成功恢复
+     */
+    bool TryRecover(const LexicalError& error);
+    
+    /**
+     * @brief 获取当前行文本
+     * @return 当前行的文本内容
+     */
+    std::string GetCurrentLineText() const;
 
     /**
      * @brief 验证Token长度

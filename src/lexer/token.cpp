@@ -25,6 +25,19 @@ std::vector<std::string> ReservedWords::reserved_list_;
 bool ReservedWords::initialized_ = false;
 
 /* ========================================================================== */
+/* TokenPosition实现 */
+/* ========================================================================== */
+
+std::string TokenPosition::ToString() const {
+    std::stringstream ss;
+    if (!source_name.empty()) {
+        ss << source_name << ":";
+    }
+    ss << line << ":" << column;
+    return ss.str();
+}
+
+/* ========================================================================== */
 /* Token类实现 */
 /* ========================================================================== */
 
@@ -164,8 +177,8 @@ std::string Token::ToString() const {
 std::string Token::GetLocationString() const {
     std::ostringstream oss;
     oss << position_.line << ":" << position_.column;
-    if (!position_.source.empty()) {
-        oss << " (" << position_.source << ")";
+    if (!position_.source_name.empty()) {
+        oss << " (" << position_.source_name << ")";
     }
     return oss.str();
 }
