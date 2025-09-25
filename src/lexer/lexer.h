@@ -207,20 +207,7 @@ private:
 /* 词法分析器异常 */
 /* ========================================================================== */
 
-/**
- * @brief 词法分析错误
- * @description 词法分析过程中发生的错误
- */
-class LexicalError : public LuaError {
-public:
-    LexicalError(const std::string& message, const TokenPosition& position);
-    LexicalError(const std::string& message, Size line, Size column, std::string_view source = "");
-
-    const TokenPosition& GetPosition() const { return position_; }
-
-private:
-    TokenPosition position_;
-};
+/* LexicalError已在lexer_errors.h中定义 */
 
 /* ========================================================================== */
 /* 主词法分析器类 */

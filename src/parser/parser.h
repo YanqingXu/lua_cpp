@@ -11,11 +11,13 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include "parser/ast.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "core/lua_common.h"
 #include "core/lua_errors.h"
+#include "parser/parser_error_recovery.h"
 
 namespace lua_cpp {
 
@@ -40,35 +42,10 @@ enum class Precedence {
 };
 
 /* ========================================================================== */
-/* 语法错误类型 */
+/* 前向声明（错误类型在lexer_errors.h中定义） */
 /* ========================================================================== */
 
-class SyntaxError : public LuaError {
-public:
-    SyntaxError(const std::string& message, const SourcePosition& position);
-    
-    const SourcePosition& GetPosition() const { return position_; }
-    const std::string& GetMessage() const { return GetWhat(); }
-
-private:
-    SourcePosition position_;
-};
-
-class UnexpectedTokenError : public SyntaxError {
-public:
-    UnexpectedTokenError(TokenType expected, TokenType actual, const SourcePosition& position);
-    UnexpectedTokenError(const std::string& expected, TokenType actual, const SourcePosition& position);
-};
-
-class UnmatchedBracketError : public SyntaxError {
-public:
-    UnmatchedBracketError(TokenType bracket, const SourcePosition& position);
-};
-
-class IncompleteStatementError : public SyntaxError {
-public:
-    IncompleteStatementError(const std::string& statement_type, const SourcePosition& position);
-};
+// 使用lexer_errors.h中定义的错误类型
 
 /* ========================================================================== */
 /* Parser配置 */
@@ -79,8 +56,11 @@ struct ParserConfig {
     bool recover_from_errors = true;         // 错误恢复
     bool track_line_info = true;             // 跟踪行号信息
     bool preserve_comments = false;          // 保留注释
+    bool use_enhanced_error_recovery = true; // 使用增强错误恢复
+    bool generate_error_suggestions = true;  // 生成错误建议
     Size max_recursion_depth = 1000;        // 最大递归深度
     Size max_expression_depth = 100;        // 最大表达式深度
+    Size max_errors = 20;                   // 最大错误数量
 };
 
 /* ========================================================================== */
@@ -95,15 +75,10 @@ enum class ParserState {
 };
 
 /* ========================================================================== */
-/* 错误恢复策略 */
+/* 错误恢复策略（使用lexer_errors.h中定义的） */
 /* ========================================================================== */
 
-enum class RecoveryStrategy {
-    None,           // 不恢复，立即抛出异常
-    SkipToNext,     // 跳过到下一个语句
-    InsertMissing,  // 插入缺失的token
-    Synchronize     // 同步到可识别的点
-};
+// RecoveryStrategy已在lexer_errors.h中定义
 
 /* ========================================================================== */
 /* Lua语法分析器 */
@@ -157,6 +132,12 @@ public:
     
     // 获取错误计数
     Size GetErrorCount() const { return error_count_; }
+    
+    // 获取错误收集器
+    const ErrorCollector& GetErrorCollector() const { return *error_collector_; }
+    
+    // 获取所有错误
+    std::vector<EnhancedSyntaxError> GetAllErrors() const;
 
     /* ======================================================================== */
     /* 配置和选项 */
@@ -170,6 +151,9 @@ public:
     
     // 获取错误恢复策略
     RecoveryStrategy GetRecoveryStrategy() const { return recovery_strategy_; }
+    
+    // 获取错误恢复引擎
+    const ErrorRecoveryEngine& GetRecoveryEngine() const { return *recovery_engine_; }
 
 private:
     /* ======================================================================== */
@@ -338,6 +322,9 @@ private:
     // 报告语法错误
     void ReportError(const std::string& message);
     
+    // 报告增强的语法错误
+    void ReportEnhancedError(const EnhancedSyntaxError& error);
+    
     // 报告意外的token错误
     void ReportUnexpectedToken(TokenType expected, TokenType actual);
     
@@ -353,11 +340,17 @@ private:
     // 尝试恢复错误
     bool TryRecover();
     
+    // 尝试增强的错误恢复
+    bool TryEnhancedRecover(ErrorContext context);
+    
     // 检查递归深度
     void CheckRecursionDepth();
     
     // 检查表达式深度
     void CheckExpressionDepth();
+    
+    // 创建错误上下文
+    ErrorContext CreateErrorContext() const;
 
     /* ======================================================================== */
     /* 辅助方法 */
@@ -391,6 +384,12 @@ private:
     Size error_count_;
     Size recursion_depth_;
     Size expression_depth_;
+    
+    // 增强错误恢复系统
+    std::unique_ptr<ErrorCollector> error_collector_;
+    std::unique_ptr<ErrorRecoveryEngine> recovery_engine_;
+    std::unique_ptr<ErrorSuggestionGenerator> suggestion_generator_;
+    std::unique_ptr<Lua51ErrorFormatter> error_formatter_;
     
     // 操作符优先级表
     std::unordered_map<TokenType, Precedence> precedence_table_;

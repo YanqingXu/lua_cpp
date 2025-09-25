@@ -13,30 +13,8 @@
 namespace lua_cpp {
 
 /* ========================================================================== */
-/* 语法错误类型实现 */
+/* Parser使用lexer_errors.h中已定义的错误类型 */
 /* ========================================================================== */
-
-SyntaxError::SyntaxError(const std::string& message, const SourcePosition& position)
-    : LuaError("Syntax error at line " + std::to_string(position.line) + 
-               ", column " + std::to_string(position.column) + ": " + message),
-      position_(position) {
-}
-
-UnexpectedTokenError::UnexpectedTokenError(TokenType expected, TokenType actual, const SourcePosition& position)
-    : SyntaxError("Expected " + ToString(expected) + " but got " + ToString(actual), position) {
-}
-
-UnexpectedTokenError::UnexpectedTokenError(const std::string& expected, TokenType actual, const SourcePosition& position)
-    : SyntaxError("Expected " + expected + " but got " + ToString(actual), position) {
-}
-
-UnmatchedBracketError::UnmatchedBracketError(TokenType bracket, const SourcePosition& position)
-    : SyntaxError("Unmatched " + ToString(bracket), position) {
-}
-
-IncompleteStatementError::IncompleteStatementError(const std::string& statement_type, const SourcePosition& position)
-    : SyntaxError("Incomplete " + statement_type + " statement", position) {
-}
 
 /* ========================================================================== */
 /* Parser类实现 */
@@ -52,6 +30,16 @@ Parser::Parser(std::unique_ptr<Lexer> lexer, const ParserConfig& config)
     
     if (!lexer_) {
         throw std::invalid_argument("Lexer cannot be null");
+    }
+    
+    // 初始化增强错误恢复系统
+    if (config_.use_enhanced_error_recovery) {
+        error_collector_ = std::make_unique<ErrorCollector>();
+        recovery_engine_ = std::make_unique<ErrorRecoveryEngine>();
+        if (config_.generate_error_suggestions) {
+            suggestion_generator_ = std::make_unique<ErrorSuggestionGenerator>();
+        }
+        error_formatter_ = std::make_unique<Lua51ErrorFormatter>();
     }
     
     InitializeState();
@@ -958,18 +946,81 @@ std::unique_ptr<Expression> ParseLuaExpression(const std::string& expression,
 /* ========================================================================== */
 
 void Parser::ReportError(const std::string& message) {
+    if (config_.use_enhanced_error_recovery && error_collector_) {
+        // 使用增强错误恢复
+        EnhancedSyntaxError enhanced_error(
+            message,
+            ErrorSeverity::Error,
+            GetCurrentPosition(),
+            ErrorCategory::Syntax
+        );
+        
+        // 生成错误建议
+        if (suggestion_generator_) {
+            auto suggestions = suggestion_generator_->GenerateSuggestions(
+                enhanced_error, current_token_, lexer_.get()
+            );
+            enhanced_error.SetSuggestions(suggestions);
+        }
+        
+        error_collector_->AddError(enhanced_error);
+        error_count_++;
+        
+        if (config_.recover_from_errors) {
+            // 输出Lua 5.1.5兼容的错误格式
+            if (error_formatter_) {
+                std::cerr << error_formatter_->Format(enhanced_error) << std::endl;
+            }
+        } else {
+            throw SyntaxError(message, GetCurrentPosition());
+        }
+    } else {
+        // 传统错误处理
+        error_count_++;
+        
+        std::stringstream ss;
+        ss << "Parse error at line " << current_token_.GetLine() 
+           << ", column " << current_token_.GetColumn() << ": " << message;
+        
+        if (config_.recover_from_errors) {
+            // 记录错误但继续解析
+            std::cerr << ss.str() << std::endl;
+        } else {
+            throw SyntaxError(message, GetCurrentPosition());
+        }
+    }
+}
+
+void Parser::ReportEnhancedError(const EnhancedSyntaxError& error) {
+    if (error_collector_) {
+        error_collector_->AddError(error);
+    }
     error_count_++;
     
-    std::stringstream ss;
-    ss << "Parse error at line " << current_token_.GetLine() 
-       << ", column " << current_token_.GetColumn() << ": " << message;
-    
     if (config_.recover_from_errors) {
-        // 记录错误但继续解析
-        std::cerr << ss.str() << std::endl;
+        if (error_formatter_) {
+            std::cerr << error_formatter_->Format(error) << std::endl;
+        }
     } else {
-        throw SyntaxError(message, GetCurrentPosition());
+        throw SyntaxError(error.GetMessage(), error.GetPosition());
     }
+}
+
+std::vector<EnhancedSyntaxError> Parser::GetAllErrors() const {
+    if (error_collector_) {
+        return error_collector_->GetErrors();
+    }
+    return {};
+}
+
+ErrorContext Parser::CreateErrorContext() const {
+    ErrorContext context;
+    context.current_token = current_token_;
+    context.position = GetCurrentPosition();
+    context.recursion_depth = recursion_depth_;
+    context.expression_depth = expression_depth_;
+    context.parsing_state = state_;
+    return context;
 }
 
 void Parser::SynchronizeTo(const std::vector<TokenType>& sync_tokens) {
@@ -981,7 +1032,20 @@ void Parser::SynchronizeTo(const std::vector<TokenType>& sync_tokens) {
     }
 }
 
+void Parser::SynchronizeToNextStatement() {
+    SynchronizeTo({TokenType::Local, TokenType::If, TokenType::While, 
+                  TokenType::For, TokenType::Function, TokenType::Do,
+                  TokenType::Break, TokenType::Return, TokenType::Semicolon,
+                  TokenType::End, TokenType::Else, TokenType::Elseif,
+                  TokenType::Until, TokenType::EndOfSource});
+}
+
 bool Parser::TryRecover() {
+    if (config_.use_enhanced_error_recovery && recovery_engine_) {
+        return TryEnhancedRecover(CreateErrorContext());
+    }
+    
+    // 传统错误恢复
     switch (recovery_strategy_) {
         case RecoveryStrategy::None:
             return false;
@@ -1006,6 +1070,46 @@ bool Parser::TryRecover() {
         default:
             return false;
     }
+}
+
+bool Parser::TryEnhancedRecover(ErrorContext context) {
+    if (!recovery_engine_) {
+        return false;
+    }
+    
+    // 检查错误数量限制
+    if (error_count_ >= config_.max_errors) {
+        return false;
+    }
+    
+    auto recovery_actions = recovery_engine_->AnalyzeAndRecover(context);
+    
+    for (const auto& action : recovery_actions) {
+        switch (action.type) {
+            case RecoveryActionType::SkipToken:
+                Advance();
+                return true;
+                
+            case RecoveryActionType::InsertToken:
+                // TODO: 实现token插入（可能需要修改Lexer接口）
+                break;
+                
+            case RecoveryActionType::SynchronizeToKeyword:
+                SynchronizeTo(action.sync_tokens);
+                return true;
+                
+            case RecoveryActionType::RestartStatement:
+                SynchronizeToNextStatement();
+                return true;
+                
+            case RecoveryActionType::BacktrackAndRetry:
+                // TODO: 实现回溯（需要token流状态保存）
+                break;
+        }
+    }
+    
+    // 如果没有有效的恢复动作，使用传统恢复
+    return false;
 }
 
 SourcePosition Parser::CreateErrorPosition() const {
