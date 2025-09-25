@@ -12,15 +12,28 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![C++ Standard](https://img.shields.io/badge/C++-17/20-blue.svg)](https://en.cppreference.com/w/cpp)
 
-## 🎉 最新进展 (2025-09-23)
+## 🤖 **New AI Sessions - Quick Context Setup**
 
-### ✨ T019 Lexer 核心功能完成！
-- ✅ 标识符、关键字、数字（十进制/十六进制/浮点/科学计数/十六进制浮点）
-- ✅ 字符串（单/双引号、长字符串、转义序列）
-- ✅ 运算符与分隔符（单/多字符）、注释（单行/长注释）
-- ✅ 位置跟踪（行/列/文件）、Token 缓冲与预读
-- 📊 项目进度: 20/58 任务完成 (34.5%)
-- 🎯 当前重点: T020 - Lexer 错误处理实现
+为新的AI对话快速建立项目上下文：
+- **📖 完整项目上下文**: 阅读 `./AGENTS.md` - 2分钟理解项目全貌
+- **🚀 快速启动指南**: 查看 `./CONTEXT_SETUP.md` - AI助手使用说明  
+- **⚡ Spec-Kit集成**: 支持 `/clarify` `/analyze` `/implement` 命令
+- **📊 当前进度**: 21/58任务完成 (36.2%)，T022 Parser实现准备完成
+
+## 🎉 最新进展 (2025-09-25)
+
+### ✨ 集成最新Spec-Kit方法论！
+- ✅ **词法分析器完整实现** (T018/T019/T020完成)
+  - 标识符、关键字、数字（十进制/十六进制/浮点/科学计数/十六进制浮点）
+  - 字符串（单/双引号、长字符串、转义序列）
+  - 运算符与分隔符（单/多字符）、注释（单行/长注释）
+  - 位置跟踪（行/列/文件）、Token 缓冲与预读
+  - 完整错误处理系统（25+错误类型，8种恢复策略）
+- ✅ **AST基础架构** (T021部分完成，941行节点定义)
+- ✅ **垃圾收集器独立实现** (T023完成，0.55ms收集时间)
+- 🆕 **新增Spec-Kit v0.0.17支持**：`/clarify` 和 `/analyze` 命令
+- 📊 项目进度: 21/58 任务完成 (36.2%)
+- 🎯 当前重点: T022 - Parser核心功能实现
 
 ## 🎉 最新进展 (2025-09-21)
 
@@ -33,6 +46,13 @@
 - 📊 **项目进度**: 19/58任务完成 (32.8%)
 
 ### 📁 重要文档
+### 🤖 **AI助手快速上下文文档**
+- **[完整项目上下文](AGENTS.md)** - AI助手2分钟理解项目全貌 ⭐⭐⭐
+- **[快速上下文设置](CONTEXT_SETUP.md)** - 新AI会话启动指南
+- **[Spec-Kit工作流指南](commands/AI_WORKFLOW_GUIDE.md)** - `/clarify` `/analyze` `/implement`命令详解
+- **[项目状态快照](PROJECT_STATUS_SNAPSHOT.md)** - 实时开发状态和T022准备情况
+
+### 📚 **核心项目文档**
 - **[垃圾收集器完成报告](docs/reports/T023_GC_COMPLETION_REPORT.md)**
 - **[VM-GC集成指南](docs/guides/VM_GC_INTEGRATION_GUIDE.md)**
 - **[项目进度详情](docs/progress/DEVELOPMENT_PROGRESS.md)**
