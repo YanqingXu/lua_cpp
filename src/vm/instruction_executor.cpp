@@ -20,16 +20,16 @@ namespace lua_cpp {
 void VirtualMachine::ExecuteMOVE(RegisterIndex a, int b) {
     // MOVE A B: R(A) := R(B)
     LuaValue value = GetRegister(static_cast<RegisterIndex>(b));
-    SetRegister(a, value);
+    SetRegister(a, std::move(value));
 }
 
 void VirtualMachine::ExecuteLOADK(RegisterIndex a, int bx) {
     // LOADK A Bx: R(A) := Kst(Bx)
-    if (!current_proto_ || bx >= current_proto_->constants.size()) {
-        throw VMExecutionError("Invalid constant index in LOADK");
+    if (!current_proto_ || static_cast<Size>(bx) >= current_proto_->GetConstantCount()) {
+        throw VMExecutionError("Invalid constant index in LOADK: " + std::to_string(bx));
     }
     
-    SetRegister(a, current_proto_->constants[bx]);
+    SetRegister(a, current_proto_->GetConstant(bx));
 }
 
 void VirtualMachine::ExecuteLOADBOOL(RegisterIndex a, int b, int c) {
@@ -61,34 +61,41 @@ void VirtualMachine::ExecuteGETUPVAL(RegisterIndex a, int b) {
 
 void VirtualMachine::ExecuteGETGLOBAL(RegisterIndex a, int bx) {
     // GETGLOBAL A Bx: R(A) := Gbl[Kst(Bx)]
-    if (!current_proto_ || bx >= current_proto_->constants.size()) {
-        throw VMExecutionError("Invalid constant index in GETGLOBAL");
+    if (!current_proto_ || static_cast<Size>(bx) >= current_proto_->GetConstantCount()) {
+        throw VMExecutionError("Invalid constant index in GETGLOBAL: " + std::to_string(bx));
     }
     
-    const LuaValue& key = current_proto_->constants[bx];
+    const LuaValue& key = current_proto_->GetConstant(bx);
     if (!key.IsString()) {
         throw TypeError("Global variable name must be a string");
     }
     
-    // TODO: 从全局表中获取值
-    // 暂时返回nil
-    SetRegister(a, LuaValue());
+    // 从全局表中获取值
+    if (global_table_) {
+        LuaValue value = global_table_->Get(key);
+        SetRegister(a, std::move(value));
+    } else {
+        SetRegister(a, LuaValue()); // nil
+    }
 }
 
 void VirtualMachine::ExecuteSETGLOBAL(RegisterIndex a, int bx) {
     // SETGLOBAL A Bx: Gbl[Kst(Bx)] := R(A)
-    if (!current_proto_ || bx >= current_proto_->constants.size()) {
-        throw VMExecutionError("Invalid constant index in SETGLOBAL");
+    if (!current_proto_ || static_cast<Size>(bx) >= current_proto_->GetConstantCount()) {
+        throw VMExecutionError("Invalid constant index in SETGLOBAL: " + std::to_string(bx));
     }
     
-    const LuaValue& key = current_proto_->constants[bx];
+    const LuaValue& key = current_proto_->GetConstant(bx);
     if (!key.IsString()) {
         throw TypeError("Global variable name must be a string");
     }
     
     LuaValue value = GetRegister(a);
     
-    // TODO: 设置全局表中的值
+    // 设置全局表中的值
+    if (global_table_) {
+        global_table_->Set(key, std::move(value));
+    }
 }
 
 void VirtualMachine::ExecuteSETUPVAL(RegisterIndex a, int b) {
@@ -111,9 +118,14 @@ void VirtualMachine::ExecuteGETTABLE(RegisterIndex a, int b, int c) {
         throw TypeError("Attempt to index a " + table.TypeName() + " value");
     }
     
-    // TODO: 实现表索引操作
-    // 暂时返回nil
-    SetRegister(a, LuaValue());
+    // 从表中获取值
+    auto table_ptr = table.GetTable();
+    if (table_ptr) {
+        LuaValue result = table_ptr->Get(key);
+        SetRegister(a, std::move(result));
+    } else {
+        SetRegister(a, LuaValue()); // nil
+    }
     
     statistics_.table_operations++;
 }
@@ -128,16 +140,23 @@ void VirtualMachine::ExecuteSETTABLE(RegisterIndex a, int b, int c) {
         throw TypeError("Attempt to index a " + table.TypeName() + " value");
     }
     
-    // TODO: 实现表赋值操作
+    // 设置表中的值
+    auto table_ptr = table.GetTable();
+    if (table_ptr) {
+        table_ptr->Set(key, std::move(value));
+    }
     
     statistics_.table_operations++;
 }
 
 void VirtualMachine::ExecuteNEWTABLE(RegisterIndex a, int b, int c) {
     // NEWTABLE A B C: R(A) := {} (size = B,C)
-    // TODO: 创建新表
-    // 暂时创建空的LuaValue
-    SetRegister(a, LuaValue());
+    // b = 数组部分大小, c = 哈希部分大小
+    Size array_size = (b == 0) ? 0 : (1 << (b - 1));
+    Size hash_size = (c == 0) ? 0 : (1 << (c - 1));
+    
+    auto new_table = std::make_shared<LuaTable>(array_size, hash_size);
+    SetRegister(a, LuaValue(new_table));
     
     statistics_.table_operations++;
 }
@@ -147,14 +166,21 @@ void VirtualMachine::ExecuteSELF(RegisterIndex a, int b, int c) {
     LuaValue table = GetRegister(static_cast<RegisterIndex>(b));
     LuaValue key = GetRK(c);
     
+    // 将表对象复制到 R(A+1) 作为 self 参数
     SetRegister(a + 1, table);
     
     if (!table.IsTable()) {
         throw TypeError("Attempt to index a " + table.TypeName() + " value");
     }
     
-    // TODO: 获取方法
-    SetRegister(a, LuaValue());
+    // 获取方法并存储到 R(A)
+    auto table_ptr = table.GetTable();
+    if (table_ptr) {
+        LuaValue method = table_ptr->Get(key);
+        SetRegister(a, std::move(method));
+    } else {
+        SetRegister(a, LuaValue()); // nil
+    }
     
     statistics_.table_operations++;
 }
@@ -168,12 +194,17 @@ void VirtualMachine::ExecuteADD(RegisterIndex a, int b, int c) {
     LuaValue left = GetRK(b);
     LuaValue right = GetRK(c);
     
-    if (left.IsNumber() && right.IsNumber()) {
-        double result = left.AsNumber() + right.AsNumber();
+    // 尝试转换为数字
+    std::optional<double> left_num = left.ToNumber();
+    std::optional<double> right_num = right.ToNumber();
+    
+    if (left_num && right_num) {
+        double result = *left_num + *right_num;
         SetRegister(a, LuaValue(result));
     } else {
         // TODO: 元方法处理
-        throw TypeError("Attempt to perform arithmetic on non-number values");
+        throw TypeError("Attempt to perform arithmetic (" + left.TypeName() + 
+                       " + " + right.TypeName() + ")");
     }
 }
 
@@ -182,11 +213,15 @@ void VirtualMachine::ExecuteSUB(RegisterIndex a, int b, int c) {
     LuaValue left = GetRK(b);
     LuaValue right = GetRK(c);
     
-    if (left.IsNumber() && right.IsNumber()) {
-        double result = left.AsNumber() - right.AsNumber();
+    std::optional<double> left_num = left.ToNumber();
+    std::optional<double> right_num = right.ToNumber();
+    
+    if (left_num && right_num) {
+        double result = *left_num - *right_num;
         SetRegister(a, LuaValue(result));
     } else {
-        throw TypeError("Attempt to perform arithmetic on non-number values");
+        throw TypeError("Attempt to perform arithmetic (" + left.TypeName() + 
+                       " - " + right.TypeName() + ")");
     }
 }
 
@@ -195,11 +230,15 @@ void VirtualMachine::ExecuteMUL(RegisterIndex a, int b, int c) {
     LuaValue left = GetRK(b);
     LuaValue right = GetRK(c);
     
-    if (left.IsNumber() && right.IsNumber()) {
-        double result = left.AsNumber() * right.AsNumber();
+    std::optional<double> left_num = left.ToNumber();
+    std::optional<double> right_num = right.ToNumber();
+    
+    if (left_num && right_num) {
+        double result = *left_num * *right_num;
         SetRegister(a, LuaValue(result));
     } else {
-        throw TypeError("Attempt to perform arithmetic on non-number values");
+        throw TypeError("Attempt to perform arithmetic (" + left.TypeName() + 
+                       " * " + right.TypeName() + ")");
     }
 }
 
@@ -208,15 +247,19 @@ void VirtualMachine::ExecuteDIV(RegisterIndex a, int b, int c) {
     LuaValue left = GetRK(b);
     LuaValue right = GetRK(c);
     
-    if (left.IsNumber() && right.IsNumber()) {
-        double divisor = right.AsNumber();
+    std::optional<double> left_num = left.ToNumber();
+    std::optional<double> right_num = right.ToNumber();
+    
+    if (left_num && right_num) {
+        double divisor = *right_num;
         if (divisor == 0.0) {
             throw VMExecutionError("Division by zero");
         }
-        double result = left.AsNumber() / divisor;
+        double result = *left_num / divisor;
         SetRegister(a, LuaValue(result));
     } else {
-        throw TypeError("Attempt to perform arithmetic on non-number values");
+        throw TypeError("Attempt to perform arithmetic (" + left.TypeName() + 
+                       " / " + right.TypeName() + ")");
     }
 }
 
@@ -276,10 +319,15 @@ void VirtualMachine::ExecuteLEN(RegisterIndex a, int b) {
     LuaValue value = GetRegister(static_cast<RegisterIndex>(b));
     
     if (value.IsString()) {
-        SetRegister(a, LuaValue(static_cast<double>(value.AsString().length())));
+        SetRegister(a, LuaValue(static_cast<double>(value.GetString().length())));
     } else if (value.IsTable()) {
-        // TODO: 实现表长度计算
-        SetRegister(a, LuaValue(0.0));
+        auto table_ptr = value.GetTable();
+        if (table_ptr) {
+            Size length = table_ptr->GetArraySize();
+            SetRegister(a, LuaValue(static_cast<double>(length)));
+        } else {
+            SetRegister(a, LuaValue(0.0));
+        }
     } else {
         throw TypeError("Attempt to get length of a " + value.TypeName() + " value");
     }
@@ -287,21 +335,25 @@ void VirtualMachine::ExecuteLEN(RegisterIndex a, int b) {
 
 void VirtualMachine::ExecuteCONCAT(RegisterIndex a, int b, int c) {
     // CONCAT A B C: R(A) := R(B).. ... ..R(C)
-    std::string result;
+    std::ostringstream result;
     
     for (int i = b; i <= c; i++) {
         LuaValue value = GetRegister(static_cast<RegisterIndex>(i));
         
         if (value.IsString()) {
-            result += value.AsString();
+            result << value.GetString();
         } else if (value.IsNumber()) {
-            result += std::to_string(value.AsNumber());
+            result << value.GetNumber();
+        } else if (value.IsBoolean()) {
+            result << (value.GetBoolean() ? "true" : "false");
+        } else if (value.IsNil()) {
+            result << "nil";
         } else {
             throw TypeError("Attempt to concatenate a " + value.TypeName() + " value");
         }
     }
     
-    SetRegister(a, LuaValue(result));
+    SetRegister(a, LuaValue(result.str()));
 }
 
 /* ========================================================================== */
@@ -333,9 +385,9 @@ void VirtualMachine::ExecuteLT(RegisterIndex a, int b, int c) {
     bool less_than = false;
     
     if (left.IsNumber() && right.IsNumber()) {
-        less_than = left.AsNumber() < right.AsNumber();
+        less_than = left.GetNumber() < right.GetNumber();
     } else if (left.IsString() && right.IsString()) {
-        less_than = left.AsString() < right.AsString();
+        less_than = left.GetString() < right.GetString();
     } else {
         throw TypeError("Attempt to compare " + left.TypeName() + " with " + right.TypeName());
     }
@@ -353,9 +405,9 @@ void VirtualMachine::ExecuteLE(RegisterIndex a, int b, int c) {
     bool less_equal = false;
     
     if (left.IsNumber() && right.IsNumber()) {
-        less_equal = left.AsNumber() <= right.AsNumber();
+        less_equal = left.GetNumber() <= right.GetNumber();
     } else if (left.IsString() && right.IsString()) {
-        less_equal = left.AsString() <= right.AsString();
+        less_equal = left.GetString() <= right.GetString();
     } else {
         throw TypeError("Attempt to compare " + left.TypeName() + " with " + right.TypeName());
     }
@@ -399,13 +451,20 @@ void VirtualMachine::ExecuteCALL(RegisterIndex a, int b, int c) {
         throw TypeError("Attempt to call a " + function.TypeName() + " value");
     }
     
-    // TODO: 实现函数调用
-    // 1. 准备参数
-    // 2. 创建新的调用帧
-    // 3. 执行函数
-    // 4. 处理返回值
+    // 准备参数
+    Size param_count = (b == 0) ? (GetStackTop() - GetCurrentBase() - a - 1) : (b - 1);
     
-    // 暂时什么也不做
+    // 获取函数原型
+    const Proto* proto = function.GetFunctionProto();
+    if (!proto) {
+        throw VMExecutionError("Invalid function proto");
+    }
+    
+    // 创建新的调用帧
+    Size new_base = GetCurrentBase() + a;
+    PushCallFrame(proto, new_base, param_count);
+    
+    // 统计信息
     statistics_.function_calls++;
 }
 
@@ -417,8 +476,27 @@ void VirtualMachine::ExecuteTAILCALL(RegisterIndex a, int b, int c) {
         throw TypeError("Attempt to call a " + function.TypeName() + " value");
     }
     
-    // TODO: 实现尾调用
-    // 尾调用不会增加调用栈深度
+    // 准备参数
+    Size param_count = (b == 0) ? (GetStackTop() - GetCurrentBase() - a - 1) : (b - 1);
+    
+    // 获取函数原型
+    const Proto* proto = function.GetFunctionProto();
+    if (!proto) {
+        throw VMExecutionError("Invalid function proto");
+    }
+    
+    // 尾调用：复用当前调用帧
+    Size current_base = GetCurrentBase();
+    
+    // 移动参数到正确位置
+    for (Size i = 0; i < param_count; ++i) {
+        LuaValue param = GetRegister(a + 1 + i);
+        SetStack(current_base + i, std::move(param));
+    }
+    
+    // 更新当前函数和指令指针（不增加调用栈深度）
+    current_proto_ = proto;
+    instruction_pointer_ = 0;
     
     statistics_.function_calls++;
 }
@@ -431,10 +509,12 @@ void VirtualMachine::ExecuteRETURN(RegisterIndex a, int b) {
     
     if (b == 0) {
         // 返回从A到栈顶的所有值
-        Size stack_top = stack_->Size();
+        Size stack_top = GetStackTop();
         Size base = GetCurrentBase();
-        for (Size i = base + a; i < stack_top; i++) {
-            return_values.push_back(stack_->Get(i));
+        Size start_index = base + a;
+        
+        for (Size i = start_index; i < stack_top; i++) {
+            return_values.push_back(GetStack(i));
         }
     } else {
         // 返回指定数量的值
@@ -447,12 +527,17 @@ void VirtualMachine::ExecuteRETURN(RegisterIndex a, int b) {
     PopCallFrame();
     
     // 如果不是主函数，将返回值放到调用者的栈中
-    if (!call_stack_.empty()) {
-        // TODO: 将返回值放到正确的位置
-    } else {
-        // 主函数返回，将返回值放到栈顶
+    if (!call_stack_->IsEmpty()) {
+        // 将返回值放到调用者期望的位置
+        // 暂时简化处理：放到当前栈顶
         for (const auto& value : return_values) {
-            stack_->Push(value);
+            Push(value);
+        }
+    } else {
+        // 主函数返回，清空栈然后放入返回值
+        SetStackTop(0);
+        for (const auto& value : return_values) {
+            Push(value);
         }
     }
 }
@@ -471,14 +556,14 @@ void VirtualMachine::ExecuteFORLOOP(RegisterIndex a, int sbx) {
         throw TypeError("For loop variables must be numbers");
     }
     
-    double new_init = init.AsNumber() + step.AsNumber();
+    double new_init = init.GetNumber() + step.GetNumber();
     SetRegister(a, LuaValue(new_init));
     
     bool continue_loop;
-    if (step.AsNumber() > 0) {
-        continue_loop = new_init <= limit.AsNumber();
+    if (step.GetNumber() > 0) {
+        continue_loop = new_init <= limit.GetNumber();
     } else {
-        continue_loop = new_init >= limit.AsNumber();
+        continue_loop = new_init >= limit.GetNumber();
     }
     
     if (continue_loop) {
@@ -496,7 +581,7 @@ void VirtualMachine::ExecuteFORPREP(RegisterIndex a, int sbx) {
         throw TypeError("For loop variables must be numbers");
     }
     
-    double new_init = init.AsNumber() - step.AsNumber();
+    double new_init = init.GetNumber() - step.GetNumber();
     SetRegister(a, LuaValue(new_init));
     
     instruction_pointer_ += sbx;
@@ -520,7 +605,22 @@ void VirtualMachine::ExecuteSETLIST(RegisterIndex a, int b, int c) {
         throw TypeError("Attempt to use SETLIST on non-table value");
     }
     
-    // TODO: 实现列表设置
+    auto table_ptr = table.GetTable();
+    if (!table_ptr) {
+        throw VMExecutionError("Invalid table in SETLIST");
+    }
+    
+    // FPF = Fields Per Flush = 50 (Lua常量)
+    constexpr Size FPF = 50;
+    Size base_index = (c == 0) ? 0 : ((c - 1) * FPF);
+    
+    Size count = (b == 0) ? (GetStackTop() - GetCurrentBase() - a - 1) : b;
+    
+    for (Size i = 1; i <= count; ++i) {
+        LuaValue value = GetRegister(a + i);
+        LuaValue index_key = LuaValue(static_cast<double>(base_index + i));
+        table_ptr->Set(index_key, std::move(value));
+    }
     
     statistics_.table_operations++;
 }

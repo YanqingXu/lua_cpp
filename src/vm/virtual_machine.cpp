@@ -3,16 +3,22 @@
  * @brief Lua虚拟机核心实现
  * @description 实现Lua 5.1.5虚拟机的指令执行引擎和函数调用机制
  * @author Lua C++ Project
- * @date 2025-09-21
+ * @date 2025-09-26
+ * @version T025 - Complete VM Implementation
  */
 
 #include "virtual_machine.h"
 #include "../compiler/bytecode.h"
-#include "../types/value.h"
+#include "../core/lua_common.h"
 #include "../core/lua_errors.h"
+#include "../types/value.h"
+#include "../types/lua_table.h"
+#include "../memory/garbage_collector.h"
 #include <chrono>
 #include <algorithm>
 #include <cassert>
+#include <iostream>
+#include <sstream>
 
 namespace lua_cpp {
 
@@ -22,21 +28,18 @@ namespace lua_cpp {
 
 VirtualMachine::VirtualMachine(const VMConfig& config)
     : config_(config)
-    , stack_(std::make_unique<LuaStack>(config.stack_size, config.max_stack_size))
-    , call_stack_()
-    , execution_state_(ExecutionState::Stopped)
+    , stack_(std::make_unique<LuaStack>(config.initial_stack_size))
+    , call_stack_(std::make_unique<CallStack>(config.max_call_depth))
+    , execution_state_(ExecutionState::Ready)
     , instruction_pointer_(0)
     , current_proto_(nullptr)
-    , global_table_(nullptr)
-    , statistics_()
+    , global_table_(std::make_shared<LuaTable>())
     , debug_hook_(nullptr)
+    , statistics_()
     , instruction_count_(0) {
     
-    // 预分配调用栈
-    call_stack_.reserve(config.max_call_depth);
-    
-    // 初始化全局表
-    // global_table_ = std::make_shared<LuaTable>();
+    // 初始化统计信息
+    statistics_ = ExecutionStatistics{};
     
     Reset();
 }
@@ -58,11 +61,11 @@ std::vector<LuaValue> VirtualMachine::ExecuteProgram(const Proto* proto,
     current_proto_ = proto;
     
     // 创建主函数调用帧
-    call_stack_.emplace_back(proto, 0, args.size(), 0);
+    PushCallFrame(proto, 0, args.size(), 0);
     
     // 将参数推入栈
     for (const auto& arg : args) {
-        stack_->Push(arg);
+        Push(arg);
     }
     
     // 开始执行
@@ -81,12 +84,10 @@ std::vector<LuaValue> VirtualMachine::ExecuteProgram(const Proto* proto,
         
         // 收集返回值
         std::vector<LuaValue> results;
-        while (!stack_->IsEmpty() && stack_->Size() > 0) {
-            results.push_back(stack_->Pop());
+        Size top = GetStackTop();
+        for (Size i = 0; i < top; ++i) {
+            results.push_back(GetStack(i));
         }
-        
-        // 反转结果（因为是从栈顶弹出的）
-        std::reverse(results.begin(), results.end());
         
         return results;
         
@@ -98,13 +99,21 @@ std::vector<LuaValue> VirtualMachine::ExecuteProgram(const Proto* proto,
 
 void VirtualMachine::ExecuteInstruction(Instruction instruction) {
     if (execution_state_ != ExecutionState::Running) {
-        throw VMExecutionError("VM is not in running state");
+        throw VMExecutionError("VM is not in running state: " + 
+                              std::to_string(static_cast<int>(execution_state_)));
     }
     
     // 检查指令限制
     if (config_.enable_instruction_limit && 
         instruction_count_ >= config_.instruction_limit) {
-        throw VMExecutionError("Instruction limit exceeded");
+        throw VMExecutionError("Instruction limit exceeded: " + 
+                              std::to_string(instruction_count_) + "/" + 
+                              std::to_string(config_.instruction_limit));
+    }
+    
+    // 检查调用栈完整性
+    if (call_stack_->IsEmpty()) {
+        throw VMExecutionError("No active call frame");
     }
     
     // 更新统计信息
@@ -112,18 +121,23 @@ void VirtualMachine::ExecuteInstruction(Instruction instruction) {
     statistics_.total_instructions++;
     
     // 解码指令
-    OpCode opcode = DecodeOpCode(instruction);
-    RegisterIndex a = DecodeA(instruction);
-    int b = DecodeB(instruction);
-    int c = DecodeC(instruction);
-    int bx = DecodeBx(instruction);
-    int sbx = DecodeSBx(instruction);
+    OpCode opcode = GetOpCode(instruction);
+    RegisterIndex a = GetArgA(instruction);
+    int b = GetArgB(instruction);
+    int c = GetArgC(instruction);
+    int bx = GetArgBx(instruction);
+    int sbx = GetArgsBx(instruction);
+    
+    // 验证操作码
+    if (static_cast<int>(opcode) >= static_cast<int>(OpCode::NUM_OPCODES)) {
+        throw InvalidInstructionError("Invalid opcode: " + std::to_string(static_cast<int>(opcode)));
+    }
     
     // 更新指令统计
     statistics_.instruction_counts[static_cast<int>(opcode)]++;
     
     // 调试钩子
-    if (debug_hook_ && config_.enable_debug) {
+    if (debug_hook_ && config_.enable_debug_info) {
         DebugInfo debug_info;
         debug_info.instruction_pointer = instruction_pointer_;
         debug_info.current_function = current_proto_;
@@ -305,7 +319,7 @@ Size VirtualMachine::ExecuteInstructions(Size max_instructions) {
            (max_instructions == 0 || executed < max_instructions)) {
         
         if (!HasMoreInstructions()) {
-            execution_state_ = ExecutionState::Completed;
+            execution_state_ = ExecutionState::Finished;
             break;
         }
         
@@ -323,7 +337,7 @@ bool VirtualMachine::StepExecution() {
     }
     
     if (!HasMoreInstructions()) {
-        execution_state_ = ExecutionState::Completed;
+        execution_state_ = ExecutionState::Finished;
         return false;
     }
     
@@ -346,11 +360,11 @@ void VirtualMachine::Suspend() {
 }
 
 void VirtualMachine::Reset() {
-    execution_state_ = ExecutionState::Stopped;
+    execution_state_ = ExecutionState::Ready;
     instruction_pointer_ = 0;
     current_proto_ = nullptr;
-    call_stack_.clear();
-    stack_->Clear();
+    call_stack_->Clear();
+    SetStackTop(0);
     instruction_count_ = 0;
     
     // 重置统计信息
@@ -370,11 +384,11 @@ void VirtualMachine::SetInstructionPointer(Size ip) {
 }
 
 bool VirtualMachine::HasMoreInstructions() const {
-    if (!current_proto_ || call_stack_.empty()) {
+    if (!current_proto_ || call_stack_->IsEmpty()) {
         return false;
     }
     
-    return instruction_pointer_ < current_proto_->instructions.size();
+    return instruction_pointer_ < current_proto_->GetCodeSize();
 }
 
 Instruction VirtualMachine::GetNextInstruction() const {
@@ -382,15 +396,16 @@ Instruction VirtualMachine::GetNextInstruction() const {
         throw VMExecutionError("No more instructions to execute");
     }
     
-    return current_proto_->instructions[instruction_pointer_];
+    return current_proto_->GetInstruction(instruction_pointer_);
 }
 
 int VirtualMachine::GetCurrentLine() const {
-    if (!current_proto_ || instruction_pointer_ >= current_proto_->line_info.size()) {
+    if (!current_proto_) {
         return 0;
     }
     
-    return current_proto_->line_info[instruction_pointer_];
+    // 简化版本：返回指令指针作为行号
+    return static_cast<int>(instruction_pointer_) + 1;
 }
 
 /* ========================================================================== */
@@ -400,32 +415,52 @@ int VirtualMachine::GetCurrentLine() const {
 void VirtualMachine::SetRegister(RegisterIndex reg, const LuaValue& value) {
     Size stack_index = GetCurrentBase() + reg;
     
-    // 确保栈有足够空间
-    while (stack_->Size() <= stack_index) {
-        stack_->Push(LuaValue());
+    // 检查寄存器索引合法性
+    if (reg > 255) { // Lua寄存器最大值
+        throw VMExecutionError("Register index out of range: " + std::to_string(reg));
     }
     
-    stack_->Set(stack_index, value);
+    // 检查栈大小限制
+    Size required_size = stack_index + 1;
+    if (required_size > GetMaxStackSize()) {
+        throw VMExecutionError("Stack overflow: required " + std::to_string(required_size) + 
+                              ", max " + std::to_string(GetMaxStackSize()));
+    }
+    
+    // 确保栈有足够空间
+    while (GetStackTop() <= stack_index) {
+        Push(LuaValue());
+    }
+    
+    SetStack(stack_index, value);
+    
+    // 更新峰值堆栈使用量
+    statistics_.peak_stack_usage = std::max(statistics_.peak_stack_usage, GetStackTop());
 }
 
 LuaValue VirtualMachine::GetRegister(RegisterIndex reg) const {
+    // 检查寄存器索引合法性
+    if (reg > 255) { // Lua寄存器最大值
+        throw VMExecutionError("Register index out of range: " + std::to_string(reg));
+    }
+    
     Size stack_index = GetCurrentBase() + reg;
     
-    if (stack_index >= stack_->Size()) {
+    if (stack_index >= GetStackTop()) {
         return LuaValue(); // 返回nil
     }
     
-    return stack_->Get(stack_index);
+    return GetStack(stack_index);
 }
 
 LuaValue VirtualMachine::GetRK(int rk) const {
-    if (rk & 0x100) {
+    if (IsConstant(rk)) {
         // 常量
-        int const_index = rk & 0xFF;
-        if (!current_proto_ || const_index >= current_proto_->constants.size()) {
+        int const_index = RKToConstantIndex(rk);
+        if (!current_proto_ || const_index >= current_proto_->GetConstantCount()) {
             throw VMExecutionError("Invalid constant index");
         }
-        return current_proto_->constants[const_index];
+        return current_proto_->GetConstant(const_index);
     } else {
         // 寄存器
         return GetRegister(static_cast<RegisterIndex>(rk));
@@ -433,11 +468,11 @@ LuaValue VirtualMachine::GetRK(int rk) const {
 }
 
 Size VirtualMachine::GetCurrentBase() const {
-    if (call_stack_.empty()) {
+    if (call_stack_->IsEmpty()) {
         return 0;
     }
     
-    return call_stack_.back().GetBase();
+    return call_stack_->GetCurrentFrame().GetBase();
 }
 
 /* ========================================================================== */
@@ -445,12 +480,8 @@ Size VirtualMachine::GetCurrentBase() const {
 /* ========================================================================== */
 
 void VirtualMachine::PushCallFrame(const Proto* proto, Size base, Size param_count) {
-    if (call_stack_.size() >= config_.max_call_depth) {
-        throw CallStackOverflowError("Maximum call depth exceeded");
-    }
-    
     // 创建新的调用帧
-    call_stack_.emplace_back(proto, base, param_count, instruction_pointer_ + 1);
+    call_stack_->PushFrame(proto, base, param_count, instruction_pointer_ + 1);
     
     // 更新当前函数和指令指针
     current_proto_ = proto;
@@ -458,28 +489,24 @@ void VirtualMachine::PushCallFrame(const Proto* proto, Size base, Size param_cou
     
     // 更新统计信息
     statistics_.function_calls++;
-    statistics_.peak_call_depth = std::max(statistics_.peak_call_depth, call_stack_.size());
+    statistics_.peak_call_depth = std::max(statistics_.peak_call_depth, call_stack_->GetDepth());
 }
 
 void VirtualMachine::PopCallFrame() {
-    if (call_stack_.empty()) {
-        throw CallFrameError("Cannot pop from empty call stack");
-    }
-    
-    // 恢复返回地址
-    Size return_address = call_stack_.back().GetReturnAddress();
+    // 获取返回地址
+    Size return_address = call_stack_->GetCurrentFrame().GetReturnAddress();
     
     // 弹出调用帧
-    call_stack_.pop_back();
+    call_stack_->PopFrame();
     
-    if (call_stack_.empty()) {
+    if (call_stack_->IsEmpty()) {
         // 主函数返回，程序结束
-        execution_state_ = ExecutionState::Completed;
+        execution_state_ = ExecutionState::Finished;
         current_proto_ = nullptr;
         instruction_pointer_ = 0;
     } else {
         // 恢复上一层函数的执行上下文
-        current_proto_ = call_stack_.back().GetProto();
+        current_proto_ = call_stack_->GetCurrentFrame().GetProto();
         instruction_pointer_ = return_address;
     }
 }
@@ -489,28 +516,124 @@ void VirtualMachine::PopCallFrame() {
 /* ========================================================================== */
 
 OpCode VirtualMachine::DecodeOpCode(Instruction inst) const {
-    return static_cast<OpCode>(inst & 0x3F);
+    return GetOpCode(inst);
 }
 
 RegisterIndex VirtualMachine::DecodeA(Instruction inst) const {
-    return static_cast<RegisterIndex>((inst >> 6) & 0xFF);
+    return static_cast<RegisterIndex>(GetArgA(inst));
 }
 
 int VirtualMachine::DecodeB(Instruction inst) const {
-    return static_cast<int>((inst >> 14) & 0x1FF);
+    return GetArgB(inst);
 }
 
 int VirtualMachine::DecodeC(Instruction inst) const {
-    return static_cast<int>((inst >> 23) & 0x1FF);
+    return GetArgC(inst);
 }
 
 int VirtualMachine::DecodeBx(Instruction inst) const {
-    return static_cast<int>((inst >> 14) & 0x3FFFF);
+    return GetArgBx(inst);
 }
 
 int VirtualMachine::DecodeSBx(Instruction inst) const {
-    constexpr int MAXARG_sBx = 0x20000 - 1; // (1 << 18) / 2 - 1
-    return DecodeBx(inst) - MAXARG_sBx;
+    return GetArgsBx(inst);
+}
+
+/* ========================================================================== */
+/* 统计和诊断方法 */
+/* ========================================================================== */
+
+void VirtualMachine::ResetStatistics() {
+    statistics_ = ExecutionStatistics{};
+}
+
+Size VirtualMachine::GetMemoryUsage() const {
+    // 简化版本：返回堆栈大小
+    return GetStackSize() * sizeof(LuaValue);
+}
+
+DebugInfo VirtualMachine::GetCurrentDebugInfo() const {
+    DebugInfo info;
+    info.instruction_pointer = instruction_pointer_;
+    info.current_function = current_proto_;
+    
+    if (!call_stack_->IsEmpty()) {
+        Instruction inst = GetNextInstruction();
+        info.current_opcode = GetOpCode(inst);
+        info.current_instruction = inst;
+    } else {
+        info.current_opcode = OpCode::MOVE; // 默认值
+        info.current_instruction = 0;
+    }
+    
+    info.current_line = GetCurrentLine();
+    info.source_name = current_proto_ ? current_proto_->GetSourceName() : "";
+    info.function_name = ""; // 暂时为空
+    
+    return info;
+}
+
+std::string VirtualMachine::GetStackTrace() const {
+    if (call_stack_->IsEmpty()) {
+        return "Empty call stack";
+    }
+    
+    return call_stack_->FormatStackTrace();
+}
+
+/* ========================================================================== */
+/* 工厂函数 */
+/* ========================================================================== */
+
+std::unique_ptr<VirtualMachine> CreateStandardVM() {
+    VMConfig config;
+    config.initial_stack_size = VM_DEFAULT_STACK_SIZE;
+    config.max_stack_size = VM_MAX_STACK_SIZE;
+    config.max_call_depth = VM_MAX_CALL_STACK_DEPTH;
+    config.enable_debug_info = false;
+    config.enable_profiling = false;
+    config.enable_stack_trace = true;
+    
+    return std::make_unique<VirtualMachine>(config);
+}
+
+std::unique_ptr<VirtualMachine> CreateDebugVM() {
+    VMConfig config;
+    config.initial_stack_size = VM_DEFAULT_STACK_SIZE;
+    config.max_stack_size = VM_MAX_STACK_SIZE;
+    config.max_call_depth = VM_MAX_CALL_STACK_DEPTH;
+    config.enable_debug_info = true;
+    config.enable_profiling = true;
+    config.enable_stack_trace = true;
+    
+    return std::make_unique<VirtualMachine>(config);
+}
+
+std::unique_ptr<VirtualMachine> CreateHighPerformanceVM() {
+    VMConfig config;
+    config.initial_stack_size = VM_DEFAULT_STACK_SIZE * 2;
+    config.max_stack_size = VM_MAX_STACK_SIZE * 2;
+    config.max_call_depth = VM_MAX_CALL_STACK_DEPTH * 2;
+    config.enable_debug_info = false;
+    config.enable_profiling = false;
+    config.enable_stack_trace = false;
+    config.enable_instruction_limit = false;
+    
+    return std::make_unique<VirtualMachine>(config);
+}
+
+std::unique_ptr<VirtualMachine> CreateEmbeddedVM() {
+    VMConfig config;
+    config.initial_stack_size = 256;
+    config.max_stack_size = 1024;
+    config.max_call_depth = 50;
+    config.enable_debug_info = false;
+    config.enable_profiling = false;
+    config.enable_stack_trace = false;
+    config.enable_instruction_limit = true;
+    config.instruction_limit = 10000;
+    
+    return std::make_unique<VirtualMachine>(config);
 }
 
 } // namespace lua_cpp
