@@ -104,6 +104,11 @@ add_subdirectory(src)
 # 测试
 if(BUILD_TESTING)
     add_subdirectory(tests)
+    
+    # T026测试
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/T026_tests")
+        add_subdirectory(tests/T026_tests)
+    endif()
 endif()
 
 # 性能测试
