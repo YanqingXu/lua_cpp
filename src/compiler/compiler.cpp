@@ -1000,127 +1000,238 @@ const Proto* Compiler::GetCurrentFunction() const {
 }
 
 ExpressionContext Compiler::CompileExpression(const Expression* expr) {
-    // TODO: 实现表达式编译
-    return ExpressionContext{};
+    if (!expr) {
+        throw CompilerError("Cannot compile null expression");
+    }
+    
+    ExpressionCompiler compiler(bytecode_generator_, context_);
+    RegisterIndex reg = compiler.Compile(expr);
+    
+    return ExpressionContext{reg, false, false}; // register, not constant, not temporary
 }
 
 ExpressionContext Compiler::CompileExpressionToRegister(const Expression* expr, 
                                                        RegisterIndex target_reg) {
-    // TODO: 实现表达式编译到指定寄存器
-    return ExpressionContext{};
+    if (!expr) {
+        throw CompilerError("Cannot compile null expression");
+    }
+    
+    RegisterIndex source_reg = CompileExpression(expr).register_idx;
+    
+    if (source_reg != target_reg) {
+        // 需要移动到目标寄存器
+        bytecode_generator_.EmitABC(OpCode::MOVE, target_reg, source_reg, 0);
+        register_allocator_.Free(source_reg);
+    }
+    
+    return ExpressionContext{target_reg, false, false};
 }
 
 int Compiler::CompileExpressionAsRK(const Expression* expr) {
-    // TODO: 实现表达式编译为RK值
-    return 0;
+    if (!expr) {
+        throw CompilerError("Cannot compile null expression");
+    }
+    
+    // 尝试将表达式编译为常量
+    if (expr->IsConstant()) {
+        LuaValue constant_value = expr->EvaluateConstant();
+        int const_idx = constant_pool_.FindConstant(constant_value);
+        if (const_idx >= 0) {
+            return ConstantIndexToRK(const_idx);
+        } else {
+            const_idx = constant_pool_.AddConstant(constant_value);
+            return ConstantIndexToRK(const_idx);
+        }
+    }
+    
+    // 否则编译到寄存器
+    RegisterIndex reg = CompileExpression(expr).register_idx;
+    return static_cast<int>(reg); // 寄存器直接作为RK值
 }
 
 void Compiler::CompileCondition(const Expression* expr, 
                                std::vector<int>& true_jumps,
                                std::vector<int>& false_jumps) {
-    // TODO: 实现条件编译
+    if (!expr) {
+        throw CompilerError("Cannot compile null condition");
+    }
+    
+    // 编译条件表达式到寄存器
+    RegisterIndex condition_reg = CompileExpression(expr).register_idx;
+    
+    // 生成TEST指令来测试条件
+    // TEST A C - 如果C和(RK(A) != 0) != bool(C)，跳过下一条指令
+    Size pc = bytecode_generator_.EmitABC(OpCode::TEST, condition_reg, 0, 1); // 测试为真
+    
+    // 如果条件为假，跳转
+    int jump_pc = bytecode_generator_.EmitJump(OpCode::JMP);
+    false_jumps.push_back(jump_pc);
+    
+    register_allocator_.Free(condition_reg);
 }
 
 void Compiler::CompileStatement(const Statement* stmt) {
-    // TODO: 实现语句编译
+    if (!stmt) {
+        return; // 允许空语句
+    }
+    
+    StatementCompiler compiler(bytecode_generator_, context_);
+    
+    // 根据语句类型分发编译
+    switch (stmt->GetType()) {
+        case StatementType::ExpressionStatement: {
+            const ExpressionStatement* expr_stmt = static_cast<const ExpressionStatement*>(stmt);
+            RegisterIndex reg = CompileExpression(expr_stmt->GetExpression()).register_idx;
+            register_allocator_.Free(reg); // 表达式语句的结果不需要保留
+            break;
+        }
+        case StatementType::Block: {
+            const BlockStatement* block = static_cast<const BlockStatement*>(stmt);
+            scope_manager_.EnterScope();
+            for (const auto& child_stmt : block->GetStatements()) {
+                CompileStatement(child_stmt.get());
+            }
+            scope_manager_.ExitScope();
+            break;
+        }
+        case StatementType::Assignment: {
+            const AssignmentStatement* assign = static_cast<const AssignmentStatement*>(stmt);
+            compiler.CompileAssignmentStatement(assign);
+            break;
+        }
+        case StatementType::LocalDeclaration: {
+            const LocalDeclarationStatement* local_decl = static_cast<const LocalDeclarationStatement*>(stmt);
+            compiler.CompileLocalDeclarationStatement(local_decl);
+            break;
+        }
+        case StatementType::If: {
+            const IfStatement* if_stmt = static_cast<const IfStatement*>(stmt);
+            compiler.CompileIfStatement(if_stmt);
+            break;
+        }
+        case StatementType::While: {
+            const WhileStatement* while_stmt = static_cast<const WhileStatement*>(stmt);
+            compiler.CompileWhileStatement(while_stmt);
+            break;
+        }
+        case StatementType::For: {
+            const ForStatement* for_stmt = static_cast<const ForStatement*>(stmt);
+            compiler.CompileForStatement(for_stmt);
+            break;
+        }
+        case StatementType::Return: {
+            const ReturnStatement* return_stmt = static_cast<const ReturnStatement*>(stmt);
+            compiler.CompileReturnStatement(return_stmt);
+            break;
+        }
+        case StatementType::Break: {
+            compiler.CompileBreakStatement();
+            break;
+        }
+        case StatementType::Continue: {
+            compiler.CompileContinueStatement();
+            break;
+        }
+        default:
+            throw CompilerError("Unsupported statement type");
+    }
 }
 
 RegisterIndex Compiler::AllocateRegister() {
-    // TODO: 实现寄存器分配
-    return 0;
+    return register_allocator_.Allocate();
 }
 
 void Compiler::FreeRegister(RegisterIndex reg) {
-    // TODO: 实现寄存器释放
+    register_allocator_.Free(reg);
 }
 
 RegisterIndex Compiler::AllocateTemporary() {
-    // TODO: 实现临时寄存器分配
-    return 0;
+    return register_allocator_.AllocateTemporary();
 }
 
 void Compiler::FreeTemporaries(Size saved_top) {
-    // TODO: 实现临时寄存器释放
+    register_allocator_.RestoreTempTop();
 }
 
 Size Compiler::GetRegisterTop() const {
-    // TODO: 返回寄存器栈顶
-    return 0;
+    return register_allocator_.GetTop();
 }
 
 void Compiler::SetRegisterTop(Size top) {
-    // TODO: 设置寄存器栈顶
+    register_allocator_.SetTop(top);
 }
 
 RegisterIndex Compiler::DeclareLocal(const std::string& name) {
-    // TODO: 实现局部变量声明
-    return 0;
+    RegisterIndex reg = register_allocator_.AllocateNamed(name);
+    scope_manager_.DeclareLocal(name, reg);
+    return reg;
 }
 
 std::optional<RegisterIndex> Compiler::FindLocal(const std::string& name) const {
-    // TODO: 查找局部变量
+    const LocalVariable* local = scope_manager_.FindLocal(name);
+    if (local) {
+        return local->register_idx;
+    }
     return std::nullopt;
 }
 
 void Compiler::EnterScope() {
-    // TODO: 进入新作用域
+    scope_manager_.EnterScope();
 }
 
 void Compiler::ExitScope() {
-    // TODO: 退出作用域
+    scope_manager_.ExitScope();
 }
 
 int Compiler::AddConstant(const LuaValue& value) {
-    // TODO: 添加常量
-    return 0;
+    return constant_pool_.AddConstant(value);
 }
 
 const std::vector<LuaValue>& Compiler::GetConstants() const {
-    // TODO: 返回常量表
-    static std::vector<LuaValue> empty;
-    return empty;
+    return constant_pool_.GetConstants();
 }
 
 int Compiler::EmitInstruction(Instruction inst) {
-    // TODO: 发射指令
-    return 0;
+    Size pc = bytecode_generator_.GetCurrentPC();
+    bytecode_generator_.AddInstruction(inst);
+    return static_cast<int>(pc);
 }
 
 int Compiler::EmitABC(OpCode op, RegisterIndex a, int b, int c) {
-    // TODO: 发射ABC格式指令
-    return 0;
+    Size pc = bytecode_generator_.EmitABC(op, a, b, c);
+    return static_cast<int>(pc);
 }
 
 int Compiler::EmitABx(OpCode op, RegisterIndex a, int bx) {
-    // TODO: 发射ABx格式指令
-    return 0;
+    Size pc = bytecode_generator_.EmitABx(op, a, bx);
+    return static_cast<int>(pc);
 }
 
 int Compiler::EmitAsBx(OpCode op, RegisterIndex a, int sbx) {
-    // TODO: 发射AsBx格式指令
-    return 0;
+    Size pc = bytecode_generator_.EmitAsBx(op, a, sbx);
+    return static_cast<int>(pc);
 }
 
 int Compiler::EmitJump() {
-    // TODO: 发射跳转指令
-    return 0;
+    Size pc = bytecode_generator_.EmitJump(OpCode::JMP);
+    return static_cast<int>(pc);
 }
 
 void Compiler::PatchJump(int jump_pc) {
-    // TODO: 回填跳转地址
+    Size current_pc = bytecode_generator_.GetCurrentPC();
+    bytecode_generator_.PatchJump(static_cast<Size>(jump_pc), current_pc);
 }
 
 void Compiler::PatchJumpToHere(int jump_pc) {
-    // TODO: 回填跳转地址到当前位置
+    bytecode_generator_.PatchJumpToHere(static_cast<Size>(jump_pc));
 }
 
 int Compiler::GetCurrentPC() const {
-    // TODO: 获取当前PC
-    return 0;
+    return static_cast<int>(bytecode_generator_.GetCurrentPC());
 }
 
 void Compiler::SetLineInfo(int line) {
-    // TODO: 设置行号信息
+    bytecode_generator_.SetCurrentLine(static_cast<Size>(line));
 }
 
 } // namespace lua_cpp

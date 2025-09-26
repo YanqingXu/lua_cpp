@@ -29,9 +29,8 @@ file(GLOB_RECURSE LUA_CPP_HEADERS
 # 显式列出重要的接口头文件以确保CMake识别
 set(LUA_CPP_INTERFACE_HEADERS
     # 核心接口
-    "core/common.h"
-    "core/lua_value.h"
-    "core/error.h"
+    "core/lua_common.h"
+    "core/lua_errors.h"
     
     # 解析器接口
     "parser/ast.h"
