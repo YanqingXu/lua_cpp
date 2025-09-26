@@ -4,6 +4,7 @@
 #include "call_stack_advanced.h"
 #include "upvalue_manager.h"
 #include "coroutine_support.h"
+#include "../stdlib/stdlib.h"
 #include "core/common.h"
 #include "core/lua_value.h"
 #include <memory>
@@ -193,6 +194,20 @@ public:
      * @brief 切换到增强模式
      */
     void SwitchToEnhancedMode();
+    
+    /* ====================================================================== */
+    /* T027标准库接口 */
+    /* ====================================================================== */
+    
+    /**
+     * @brief 初始化标准库
+     */
+    void InitializeStandardLibrary();
+    
+    /**
+     * @brief 获取标准库实例
+     */
+    StandardLibrary* GetStandardLibrary() const { return standard_library_.get(); }
 
 protected:
     /* ====================================================================== */
@@ -267,6 +282,9 @@ private:
     std::unique_ptr<AdvancedCallStack> advanced_call_stack_;
     std::unique_ptr<UpvalueManager> upvalue_manager_;
     std::unique_ptr<CoroutineSupport> coroutine_support_;
+    
+    // T027标准库组件
+    std::unique_ptr<StandardLibrary> standard_library_;
     
     // 配置和状态
     T026Config t026_config_;

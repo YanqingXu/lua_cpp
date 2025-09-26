@@ -1,6 +1,7 @@
 #include "enhanced_virtual_machine.h"
 #include "core/exceptions.h"
 #include "utils/debug.h"
+#include "../stdlib/stdlib.h"
 #include <sstream>
 #include <chrono>
 
@@ -34,6 +35,10 @@ void EnhancedVirtualMachine::InitializeT026Components() {
         );
         coroutine_support_->SetSchedulingPolicy(t026_config_.coroutine_scheduling);
     }
+    
+    // T027：创建并初始化标准库
+    standard_library_ = CreateCompleteStandardLibrary();
+    InitializeStandardLibrary();
     
     // 配置高级调用栈
     if (t026_config_.enable_tail_call_optimization) {
@@ -713,6 +718,25 @@ std::unique_ptr<VirtualMachineAdapter> CreateVMAdapter(
     vm->SetT026Config(config);
     
     return std::make_unique<VirtualMachineAdapter>(std::move(vm));
+}
+
+/* ========================================================================== */
+/* T027标准库集成 */
+/* ========================================================================== */
+
+void EnhancedVirtualMachine::InitializeStandardLibrary() {
+    if (!standard_library_) {
+        throw VMExecutionError("Standard library not created");
+    }
+    
+    // 获取全局表
+    auto global_table = global_table_;
+    if (!global_table) {
+        throw VMExecutionError("Global table not initialized");
+    }
+    
+    // 将所有标准库函数注册到全局表
+    InitializeAllStandardLibraries(standard_library_.get(), global_table.get());
 }
 
 } // namespace lua_cpp
