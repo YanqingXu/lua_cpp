@@ -60,10 +60,10 @@ add_library(lua_cpp_lib STATIC
     ${LUA_CPP_INTERFACE_HEADERS}
 )
 
-# 设置库属性
+# 设置库属性 - C++20用于协程支持(T028)
 set_target_properties(lua_cpp_lib PROPERTIES
     OUTPUT_NAME "lua_cpp"
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     PUBLIC_HEADER "${LUA_CPP_INTERFACE_HEADERS}"
 )
@@ -128,8 +128,8 @@ add_executable(lua_cpp cli/lua_cli.cpp)
 # 链接核心库
 target_link_libraries(lua_cpp lua_cpp_lib)
 
-# 设置可执行文件属性
+# 设置可执行文件属性 - C++20用于协程支持(T028)
 set_target_properties(lua_cpp PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
 )

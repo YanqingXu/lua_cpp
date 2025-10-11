@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/common.h"
+#include "core/lua_common.h"
 #include "compiler/bytecode.h"
-#include "core/error.h"
+#include "core/lua_errors.h"
 #include <memory>
 #include <vector>
 
@@ -25,7 +25,7 @@ class LuaValue;
 class CallStackOverflowError : public LuaError {
 public:
     explicit CallStackOverflowError(const std::string& message = "Call stack overflow")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**
@@ -34,7 +34,7 @@ public:
 class CallFrameError : public LuaError {
 public:
     explicit CallFrameError(const std::string& message = "Call frame error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /* ========================================================================== */

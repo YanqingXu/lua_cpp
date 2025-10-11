@@ -3,11 +3,12 @@
 #include "stack.h"
 #include "call_frame.h"
 #include "compiler/bytecode.h"
-#include "core/common.h"
-#include "core/lua_value.h"
-#include "core/error.h"
+#include "core/lua_common.h"
+#include "types/value.h"
+#include "core/lua_errors.h"
 #include <memory>
 #include <vector>
+#include <array>
 #include <functional>
 #include <unordered_map>
 
@@ -30,7 +31,7 @@ class LuaTable;
 class VMExecutionError : public LuaError {
 public:
     explicit VMExecutionError(const std::string& message = "VM execution error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**
@@ -39,16 +40,7 @@ public:
 class InvalidInstructionError : public LuaError {
 public:
     explicit InvalidInstructionError(const std::string& message = "Invalid instruction")
-        : LuaError(ErrorType::Runtime, message) {}
-};
-
-/**
- * @brief 类型错误
- */
-class TypeError : public LuaError {
-public:
-    explicit TypeError(const std::string& message = "Type error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**
@@ -57,7 +49,7 @@ public:
 class RuntimeError : public LuaError {
 public:
     explicit RuntimeError(const std::string& message = "Runtime error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /* ========================================================================== */

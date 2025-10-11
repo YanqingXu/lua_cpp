@@ -1,6 +1,5 @@
 #include "coroutine_support.h"
 #include "virtual_machine.h"
-#include "core/proto.h"
 #include <algorithm>
 #include <chrono>
 #include <sstream>

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/common.h"
-#include "core/lua_value.h"
-#include "core/error.h"
+#include "core/lua_common.h"
+#include "types/value.h"
+#include "core/lua_errors.h"
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -27,7 +27,7 @@ class GarbageCollector;
 class UpvalueError : public LuaError {
 public:
     explicit UpvalueError(const std::string& message = "Upvalue error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**

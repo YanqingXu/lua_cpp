@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include "core/common.h"
-#include "core/lua_value.h"
+#include "core/lua_common.h"
+#include "value.h"
 #include <unordered_map>
 #include <vector>
 

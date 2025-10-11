@@ -5,8 +5,8 @@
 #include "upvalue_manager.h"
 #include "coroutine_support.h"
 #include "../stdlib/stdlib.h"
-#include "core/common.h"
-#include "core/lua_value.h"
+#include "core/lua_common.h"
+#include "types/value.h"
 #include <memory>
 
 namespace lua_cpp {

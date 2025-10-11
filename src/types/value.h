@@ -12,6 +12,7 @@
 #include <string>
 #include <memory>
 #include <variant>
+#include <stdexcept>
 
 namespace lua_cpp {
 

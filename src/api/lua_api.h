@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/common.h"
+#include "core/lua_common.h"
 #include "core/lua_value.h"
 #include "core/error.h"
 #include <functional>

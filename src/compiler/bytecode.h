@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/common.h"
-#include "core/lua_value.h"
+#include "core/lua_common.h"
+#include "types/value.h"
 #include <vector>
 #include <cstdint>
 #include <memory>

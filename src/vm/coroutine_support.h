@@ -3,9 +3,9 @@
 #include "call_stack_advanced.h"
 #include "upvalue_manager.h"
 #include "stack.h"
-#include "core/common.h"
-#include "core/lua_value.h"
-#include "core/error.h"
+#include "core/lua_common.h"
+#include "types/value.h"
+#include "core/lua_errors.h"
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -30,7 +30,7 @@ class Proto;
 class CoroutineError : public LuaError {
 public:
     explicit CoroutineError(const std::string& message = "Coroutine error")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**

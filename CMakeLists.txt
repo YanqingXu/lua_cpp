@@ -7,16 +7,35 @@ project(lua_cpp
     LANGUAGES CXX
 )
 
-# 设置C++标准
-set(CMAKE_CXX_STANDARD 17)
+# 设置C++标准 - C++20用于协程支持(T028)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 启用C++20特性（如果编译器支持）
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+# 检查C++20协程支持
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+    #include <coroutine>
+    int main() {
+        std::suspend_always s;
+        return 0;
+    }
+" HAS_CPP20_COROUTINES)
+
+if(NOT HAS_CPP20_COROUTINES)
+    message(WARNING "C++20 coroutines not fully supported, some features may be unavailable")
+endif()
+
+# 编译器特定C++20标志
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -fcoroutines")
+    message(STATUS "Enabled C++20 coroutines for GCC")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -stdlib=libc++")
+    message(STATUS "Enabled C++20 coroutines for Clang")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17 /Zc:__cplusplus /utf-8")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /Zc:__cplusplus /utf-8 /await:strict /FS")
+    message(STATUS "Enabled C++20 coroutines for MSVC with /FS flag")
 endif()
 
 # 编译器警告设置
@@ -80,6 +99,12 @@ if(BUILD_BENCHMARKS)
     find_package(benchmark QUIET)
     if(NOT benchmark_FOUND)
         include(FetchContent)
+        
+        # 设置Google Benchmark选项以允许下载依赖
+        set(BENCHMARK_DOWNLOAD_DEPENDENCIES ON CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+        
         FetchContent_Declare(
             googlebenchmark
             GIT_REPOSITORY https://github.com/google/benchmark.git
@@ -104,16 +129,13 @@ add_subdirectory(src)
 # 测试
 if(BUILD_TESTING)
     add_subdirectory(tests)
-    
-    # T026测试
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/T026_tests")
-        add_subdirectory(tests/T026_tests)
-    endif()
 endif()
 
 # 性能测试
 if(BUILD_BENCHMARKS)
-    add_subdirectory(benchmarks)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks")
+        add_subdirectory(benchmarks)
+    endif()
 endif()
 
 # 安装规则

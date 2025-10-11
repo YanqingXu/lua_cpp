@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "core/common.h"
+#include "core/lua_common.h"
 #include "garbage_collector.h"
 #include <memory>
 #include <functional>

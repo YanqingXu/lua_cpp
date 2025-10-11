@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/common.h"
-#include "core/lua_value.h"
-#include "core/error.h"
+#include "core/lua_common.h"
+#include "types/value.h"
+#include "core/lua_errors.h"
 #include <vector>
 #include <memory>
 
@@ -18,7 +18,7 @@ namespace lua_cpp {
 class StackOverflowError : public LuaError {
 public:
     explicit StackOverflowError(const std::string& message = "Stack overflow")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**
@@ -27,7 +27,7 @@ public:
 class StackUnderflowError : public LuaError {
 public:
     explicit StackUnderflowError(const std::string& message = "Stack underflow")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /**
@@ -36,7 +36,7 @@ public:
 class StackIndexError : public LuaError {
 public:
     explicit StackIndexError(const std::string& message = "Invalid stack index")
-        : LuaError(ErrorType::Runtime, message) {}
+        : LuaError(message, ErrorType::RUNTIME_ERROR) {}
 };
 
 /* ========================================================================== */

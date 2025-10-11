@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include "core/common.h"
-#include "core/lua_value.h"
+#include "core/lua_common.h"
+#include "types/value.h"
 #include "vm/enhanced_virtual_machine.h"
 #include <string>
 #include <vector>

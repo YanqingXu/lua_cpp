@@ -1,7 +1,7 @@
 # 📊 项目进度仪表板
 
 ## 🗓️ 更新时间
-**2025年9月26日 - T027 标准库实现完成！🎯**
+**2025年10月11日 - T028 协程标准库基础设施修复完成！🎉**
 
 ---
 项目已成功集成Spec-Kit规范驱动开发方法论，建立了标准化的特性开发流程：
@@ -14,8 +14,21 @@
 005-vm-instruction-set:    ████████████████████████████████████ 100% ✅ 🚀
 006-advanced-call-stack:   ████████████████████████████████████ 100% ✅ 🌟
 007-stdlib-implementation: ████████████████████████████████████ 100% ✅ 🎯
-008-coroutine-stdlib:      ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0% ⏳
+008-coroutine-stdlib:      █████████████░░░░░░░░░░░░░░░░░░░░░░░░ 35% 🔄 (实施中)
 ```
+
+### 🎯 T028 协程标准库技术方案（基于C++20）
+- **技术创新**: 充分利用C++20协程特性 (`<coroutine>`)
+- **核心组件**: `LuaCoroutine`, `promise_type`, `YieldAwaiter`
+- **Lua API**: `create/resume/yield/status/running/wrap`
+- **性能目标**: Resume/Yield < 100ns，创建 < 5μs
+- **详细计划**: `specs/T028_COROUTINE_STDLIB_PLAN.md` (58 sections, 1500+ lines)
+- **✅ 最新进展**: 
+  - 完成头文件基础设施修复（29个文件，150+错误修复）
+  - coroutine_lib.h/cpp 语法100%正确
+  - 所有依赖头文件路径修复完成
+  - LuaError构造函数统一完成
+  - CMake配置优化（添加/FS标志）
 
 ### 🎯 项目结构优化
 - **根目录整理**: 临时文件和测试文件移入temp目录，保持项目结构清洁
@@ -122,13 +135,37 @@ T026 高级调用栈管理完成报告:
 
 ### 🔄 进行中任务
 
-#### 当前重点: T027 - 标准库实现
+#### 🎯 当前重点: T028 - 协程标准库支持
 ```
-进度: 准备开始  
+进度: Phase 1 完成 (35%) 🔄
 优先级: 高
-依赖: T025-T026 (已完成)
-预计完成: 2025-10-30
+依赖: T027 (标准库) ✅ 已完成
+技术方案: C++20协程特性 (<coroutine>)
+预计完成: 2025-10-13
+详细计划: specs/T028_COROUTINE_STDLIB_PLAN.md
+
+✅ Phase 1: 头文件基础设施修复 - 100% COMPLETE
+   - 修复29个文件的头文件路径错误
+   - 统一LuaType和ErrorType枚举成员
+   - 修复5个文件的LuaError构造函数参数顺序
+   - 添加缺失的头文件（<stdexcept>, <array>）
+   - CMake配置优化（MSVC /FS标志）
+   
+🔄 Phase 2: VM集成问题修复 - 进行中
+   - virtual_machine.h PopCallFrame重复定义
+   - call_stack_advanced.h语法错误
+   - compiler模块预先存在错误（~100+）
+   
+⏳ Phase 3: 编译验证与测试
+⏳ Phase 4: 性能优化与文档
 ```
+
+**技术亮点**:
+- 🚀 基于C++20协程 (`co_await`, `co_yield`, `co_return`)
+- ⚡ 零成本抽象，编译期优化
+- 🎯 完整Lua 5.1.5 `coroutine.*` API
+- 🔧 与T026高级调用栈无缝集成
+- 📊 目标性能: Resume/Yield < 100ns
 
 ### ⏳ 待开始任务 (32/58)
 

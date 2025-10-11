@@ -1,8 +1,8 @@
 #pragma once
 
 #include "call_frame.h"
-#include "core/common.h"
-#include "core/error.h"
+#include "core/lua_common.h"
+#include "core/lua_errors.h"
 #include <memory>
 #include <vector>
 #include <chrono>

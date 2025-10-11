@@ -9,7 +9,7 @@
 #pragma once
 
 #include "bytecode.h"
-#include "../core/lua_value.h"
+#include "../types/value.h"
 #include "../core/lua_common.h"
 #include <vector>
 #include <unordered_map>
