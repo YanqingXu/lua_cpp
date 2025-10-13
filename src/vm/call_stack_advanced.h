@@ -1,10 +1,12 @@
 #pragma once
 
+#include "call_stack.h"
 #include "call_frame.h"
 #include "core/lua_common.h"
 #include "core/lua_errors.h"
 #include <memory>
 #include <vector>
+#include <map>
 #include <chrono>
 
 namespace lua_cpp {
@@ -231,17 +233,17 @@ public:
      * @brief 推入调用帧（带统计）
      */
     void PushFrame(const Proto* proto, Size base, Size param_count, 
-                   Size return_address = 0) override;
+                   Size return_address = 0);
     
     /**
      * @brief 弹出调用帧（带统计）
      */
-    CallFrame PopFrame() override;
+    CallFrame PopFrame();
     
     /**
      * @brief 清空调用栈（带统计重置）
      */
-    void Clear() override;
+    void Clear();
     
     /* ====================================================================== */
     /* 调用栈验证和诊断 */

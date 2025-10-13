@@ -1,7 +1,7 @@
 # 📊 项目进度仪表板
 
 ## 🗓️ 更新时间
-**2025年10月11日 - T028 协程标准库基础设施修复完成！🎉**
+**2025年10月13日 - T028 协程标准库 Phase 3.2 完成！🎉**
 
 ---
 项目已成功集成Spec-Kit规范驱动开发方法论，建立了标准化的特性开发流程：
@@ -14,7 +14,7 @@
 005-vm-instruction-set:    ████████████████████████████████████ 100% ✅ 🚀
 006-advanced-call-stack:   ████████████████████████████████████ 100% ✅ 🌟
 007-stdlib-implementation: ████████████████████████████████████ 100% ✅ 🎯
-008-coroutine-stdlib:      █████████████░░░░░░░░░░░░░░░░░░░░░░░░ 35% 🔄 (实施中)
+008-coroutine-stdlib:      ███████████████████████░░░░░░░░░░░░░ 60% 🔄 (Phase 3.2 完成!)
 ```
 
 ### 🎯 T028 协程标准库技术方案（基于C++20）
@@ -23,12 +23,23 @@
 - **Lua API**: `create/resume/yield/status/running/wrap`
 - **性能目标**: Resume/Yield < 100ns，创建 < 5μs
 - **详细计划**: `specs/T028_COROUTINE_STDLIB_PLAN.md` (58 sections, 1500+ lines)
-- **✅ 最新进展**: 
-  - 完成头文件基础设施修复（29个文件，150+错误修复）
-  - coroutine_lib.h/cpp 语法100%正确
-  - 所有依赖头文件路径修复完成
-  - LuaError构造函数统一完成
-  - CMake配置优化（添加/FS标志）
+- **✅ Phase 1 完成**: 头文件基础设施修复（29个文件，150+错误修复）
+- **✅ Phase 2 完成**: VM集成问题修复（3个文件，20+错误修复）
+- **✅ Phase 3.1 完成**: **C++20协程包装器验证（4个测试，全部通过！）**
+  - ✅ 协程创建与初始状态管理
+  - ✅ Resume/Yield 操作正确性
+  - ✅ 生命周期状态转换 (SUSPENDED → DEAD)
+  - ✅ 移动语义 (Move Construction & Assignment)
+  - 📊 测试通过率: 100% (4/4)
+  - 📁 测试文件: `tests/unit/test_coroutine_lib_minimal.cpp` (255 lines)
+  - 📄 完成报告: `docs/T028_PHASE3_SECTION1_REPORT.md`
+- **✅ Phase 3.2 完成**: **Lua API 接口分析和测试设计**
+  - ✅ 完整分析 6 个 Lua 协程 API 接口
+  - ✅ 设计简化的测试框架（LuaValue, SimpleCoroutine）
+  - ✅ 创建 6 个完整测试用例设计
+  - ✅ 识别 4 个关键技术挑战
+  - 📁 测试设计: `tests/unit/test_coroutine_lib_api.cpp` (600+ lines)
+  - 📄 完成报告: `docs/T028_PHASE3_SECTION2_REPORT.md`
 
 ### 🎯 项目结构优化
 - **根目录整理**: 临时文件和测试文件移入temp目录，保持项目结构清洁
@@ -137,11 +148,11 @@ T026 高级调用栈管理完成报告:
 
 #### 🎯 当前重点: T028 - 协程标准库支持
 ```
-进度: Phase 1 完成 (35%) 🔄
+进度: Phase 3.2 完成 (60%) 🔄
 优先级: 高
 依赖: T027 (标准库) ✅ 已完成
 技术方案: C++20协程特性 (<coroutine>)
-预计完成: 2025-10-13
+预计完成: 2025-10-15
 详细计划: specs/T028_COROUTINE_STDLIB_PLAN.md
 
 ✅ Phase 1: 头文件基础设施修复 - 100% COMPLETE
@@ -151,13 +162,37 @@ T026 高级调用栈管理完成报告:
    - 添加缺失的头文件（<stdexcept>, <array>）
    - CMake配置优化（MSVC /FS标志）
    
-🔄 Phase 2: VM集成问题修复 - 进行中
-   - virtual_machine.h PopCallFrame重复定义
-   - call_stack_advanced.h语法错误
-   - compiler模块预先存在错误（~100+）
+✅ Phase 2: VM集成问题修复 - 100% COMPLETE
+   - 修复virtual_machine.h PopCallFrame重复定义
+   - 修复call_stack_advanced.h缺失<map>头文件
+   - 移除错误的override关键字
+   - VM核心编译通过，coroutine_lib依赖满足
+
+✅ Phase 3.1: C++20协程包装器验证 - 100% COMPLETE 🎉
+   - 创建独立最小化测试环境
+   - 验证协程创建与初始状态管理
+   - 验证Resume/Yield操作正确性
+   - 验证生命周期状态转换
+   - 验证移动语义实现
+   - 测试通过率: 100% (4/4)
+   - 完成报告: docs/T028_PHASE3_SECTION1_REPORT.md
+
+✅ Phase 3.2: Lua API接口分析和测试设计 - 100% COMPLETE 🎯
+   - 完整分析6个Lua协程API接口（create/resume/yield/status/running/wrap）
+   - 设计简化的测试框架（LuaValue, SimpleCoroutine, SimpleCoroutineLibrary）
+   - 创建6个完整测试用例设计（600+ lines）
+   - 识别4个关键技术挑战（编译问题、模板匹配、协程集成、状态管理）
+   - 发现VM架构问题（vector vs CallStack*）
+   - 完成报告: docs/T028_PHASE3_SECTION2_REPORT.md
    
-⏳ Phase 3: 编译验证与测试
-⏳ Phase 4: 性能优化与文档
+⏳ Phase 3.3: 完整集成测试 - 准备中（下一优先级）
+   - 修复VM架构问题（virtual_machine.h）
+   - 解决stdlib_common.h可见性
+   - 实际VM集成测试
+   - 性能基准测试（Resume/Yield < 100ns）
+   
+⏳ Phase 3.4: 文档与报告 - 待开始
+⏳ Phase 4: 性能优化与最终文档 - 待开始
 ```
 
 **技术亮点**:

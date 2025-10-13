@@ -269,28 +269,30 @@ private:
 /* ========================================================================== */
 
 /**
- * @brief 调用栈管理器
+ * @brief 基础调用栈管理器（已废弃，使用 SimpleCallStack 代替）
+ * 
+ * @deprecated 此类将在未来版本中移除，请使用 vm/simple_call_stack.h 中的 SimpleCallStack
  * 
  * 管理函数调用栈，提供调用帧的创建、销毁和管理功能
  */
-class CallStack {
+class [[deprecated("Use SimpleCallStack from vm/simple_call_stack.h instead")]] BasicCallStack {
 public:
     /**
      * @brief 构造函数
      * @param max_depth 最大调用深度
      */
-    explicit CallStack(Size max_depth = VM_MAX_CALL_STACK_DEPTH);
+    explicit BasicCallStack(Size max_depth = VM_MAX_CALL_STACK_DEPTH);
     
     /**
      * @brief 析构函数
      */
-    ~CallStack() = default;
+    ~BasicCallStack() = default;
     
     // 禁用拷贝，允许移动
-    CallStack(const CallStack&) = delete;
-    CallStack& operator=(const CallStack&) = delete;
-    CallStack(CallStack&&) = default;
-    CallStack& operator=(CallStack&&) = default;
+    BasicCallStack(const BasicCallStack&) = delete;
+    BasicCallStack& operator=(const BasicCallStack&) = delete;
+    BasicCallStack(BasicCallStack&&) = default;
+    BasicCallStack& operator=(BasicCallStack&&) = default;
     
     /* ====================================================================== */
     /* 调用帧操作 */
@@ -456,16 +458,18 @@ private:
 /* ========================================================================== */
 
 /**
- * @brief 创建标准调用栈
+ * @brief 创建标准调用栈（已废弃）
+ * @deprecated 使用 CreateStandardCallStack() 创建 SimpleCallStack
  * @return 调用栈实例
  */
-std::unique_ptr<CallStack> CreateStandardCallStack();
+[[deprecated]] std::unique_ptr<BasicCallStack> CreateStandardBasicCallStack();
 
 /**
- * @brief 创建深度调用栈（用于递归密集的场景）
+ * @brief 创建深度调用栈（用于递归密集的场景）（已废弃）
+ * @deprecated 使用 SimpleCallStack 或 AdvancedCallStack
  * @return 调用栈实例
  */
-std::unique_ptr<CallStack> CreateDeepCallStack();
+[[deprecated]] std::unique_ptr<BasicCallStack> CreateDeepBasicCallStack();
 
 /**
  * @brief 创建浅层调用栈（用于嵌入式环境）

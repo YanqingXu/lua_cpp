@@ -323,11 +323,6 @@ public:
     }
     
     /**
-     * @brief 弹出调用帧
-     */
-    CallFrame PopCallFrame() { return call_stack_->PopFrame(); }
-    
-    /**
      * @brief 获取当前调用帧
      */
     CallFrame& GetCurrentCallFrame() { return call_stack_->GetCurrentFrame(); }

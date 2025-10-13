@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="E:\Programming\spec-kit-lua\lua_cpp\tests\unit\test_coroutine_lib_minimal.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="E:\Programming\spec-kit-lua\lua_cpp\tests\unit\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{ACD2A793-B383-3DC7-884C-FA0332ACE1E7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

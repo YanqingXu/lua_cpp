@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.16)
+project(test_coroutine_api CXX)
+
+# C++20 标准
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 编译器特定设置
+if(MSVC)
+    # C++20 协程支持
+    add_compile_options(/std:c++20)
+    add_compile_options(/await:strict)
+    # UTF-8 支持
+    add_compile_options(/utf-8)
+    # 异常处理
+    add_compile_options(/EHsc)
+    # 警告级别
+    add_compile_options(/W3)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # GCC/Clang C++20 协程支持
+    add_compile_options(-std=c++20)
+    add_compile_options(-fcoroutines)
+endif()
+
+# 输出目录
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/Debug)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/Release)
+
+# 源文件
+add_executable(test_coroutine_api
+    test_coroutine_lib_api.cpp
+)
+
+# 配置信息
+message(STATUS "T028 API Test Configuration:")
+message(STATUS "  - C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  - Compiler: ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "  - Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Target 'test_coroutine_api' configured successfully")
