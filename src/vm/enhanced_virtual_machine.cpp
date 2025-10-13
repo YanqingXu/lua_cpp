@@ -11,52 +11,32 @@ namespace lua_cpp {
 /* EnhancedVirtualMachine 实现 */
 /* ========================================================================== */
 
-EnhancedVirtualMachine::EnhancedVirtualMachine(const VMConfig& config)
+EnhancedVirtualMachine::EnhancedVirtualMachine(const VMConfig& config, bool enable_advanced)
     : VirtualMachine(config)
-    , t026_enabled_(true)
-    , is_tail_call_(false)
-    , legacy_mode_(false) {
+    , advanced_call_stack_manager_(nullptr)
+    , use_advanced_features_(enable_advanced)
+    , upvalue_manager_(nullptr)
+    , coroutine_support_(nullptr) {
     
     InitializeT026Components();
 }
 
 void EnhancedVirtualMachine::InitializeT026Components() {
-    // 创建高级调用栈
-    advanced_call_stack_ = std::make_unique<AdvancedCallStack>();
+    // 如果启用高级功能，创建高级调用栈管理器
+    if (use_advanced_features_) {
+        advanced_call_stack_manager_ = std::make_unique<AdvancedCallStackManager>(
+            GetConfig().max_call_depth
+        );
+    }
     
     // 创建Upvalue管理器
     upvalue_manager_ = std::make_unique<UpvalueManager>();
     
-    // 创建协程支持（如果启用）
-    if (t026_config_.enable_coroutine_support) {
-        coroutine_support_ = std::make_unique<CoroutineSupport>(
-            t026_config_.max_coroutines,
-            t026_config_.coroutine_stack_size
-        );
-        coroutine_support_->SetSchedulingPolicy(t026_config_.coroutine_scheduling);
-    }
-    
-    // T027：创建并初始化标准库
-    standard_library_ = CreateCompleteStandardLibrary();
-    InitializeStandardLibrary();
-    
-    // 配置高级调用栈
-    if (t026_config_.enable_tail_call_optimization) {
-        advanced_call_stack_->EnableTailCallOptimization(true);
-    }
-    
-    if (t026_config_.enable_performance_monitoring) {
-        advanced_call_stack_->EnablePerformanceMonitoring(true);
-    }
-    
-    if (t026_config_.enable_call_pattern_analysis) {
-        advanced_call_stack_->EnableCallPatternAnalysis(true);
-    }
-    
-    // 配置Upvalue管理器
-    upvalue_manager_->EnableCaching(t026_config_.enable_upvalue_caching);
-    upvalue_manager_->EnableSharing(t026_config_.enable_upvalue_sharing);
-    upvalue_manager_->EnableGCIntegration(t026_config_.enable_gc_integration);
+    // 创建协程支持（如果配置中启用）
+    // TODO: 从 config 读取协程配置
+    // if (config.enable_coroutine_support) {
+    //     coroutine_support_ = std::make_unique<CoroutineSupport>(...);
+    // }
 }
 
 std::vector<LuaValue> EnhancedVirtualMachine::ExecuteProgramEnhanced(

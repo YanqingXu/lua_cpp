@@ -1,6 +1,5 @@
 #pragma once
 
-#include "call_stack.h"
 #include "call_frame.h"
 #include "core/lua_common.h"
 #include "core/lua_errors.h"
@@ -19,40 +18,92 @@ class Proto;
 class LuaValue;
 
 /* ========================================================================== */
-/* 高级调用栈管理器 */
+/* 高级调用栈管理器（T026）*/
 /* ========================================================================== */
 
 /**
- * @brief 高级调用栈管理器
+ * @brief 高级调用栈管理器（独立实现，不继承）
  * 
- * 扩展基础CallStack，增加尾调用优化、性能监控和调试增强功能
+ * T026 增强功能：尾调用优化、性能监控和调试增强
+ * 
+ * 设计哲学：
+ * - 不继承基础 CallStack（避免过度抽象）
+ * - 独立管理自己的 CallFrame 数组（组合而非继承）
+ * - 提供 T026 特有的高级功能
+ * - 可被 EnhancedVirtualMachine 选择性使用
+ * 
  * 主要特性：
  * - 尾调用优化（避免栈溢出）
  * - 性能统计和监控
  * - 增强的调试信息
  * - 调用模式分析
  */
-class AdvancedCallStack : public CallStack {
+class AdvancedCallStackManager {
 public:
     /**
      * @brief 构造函数
      * @param max_depth 最大调用深度
      */
-    explicit AdvancedCallStack(Size max_depth = VM_MAX_CALL_STACK_DEPTH);
+    explicit AdvancedCallStackManager(Size max_depth = VM_MAX_CALL_STACK_DEPTH);
     
     /**
      * @brief 析构函数
      */
-    ~AdvancedCallStack() = default;
+    ~AdvancedCallStackManager() = default;
     
     // 禁用拷贝，允许移动
-    AdvancedCallStack(const AdvancedCallStack&) = delete;
-    AdvancedCallStack& operator=(const AdvancedCallStack&) = delete;
-    AdvancedCallStack(AdvancedCallStack&&) = default;
-    AdvancedCallStack& operator=(AdvancedCallStack&&) = default;
+    AdvancedCallStackManager(const AdvancedCallStackManager&) = delete;
+    AdvancedCallStackManager& operator=(const AdvancedCallStackManager&) = delete;
+    AdvancedCallStackManager(AdvancedCallStackManager&&) = default;
+    AdvancedCallStackManager& operator=(AdvancedCallStackManager&&) = default;
     
     /* ====================================================================== */
-    /* 尾调用优化 */
+    /* 基础调用栈操作（独立实现，不依赖继承）*/
+    /* ====================================================================== */
+    
+    /**
+     * @brief 推入新的调用帧
+     * @param proto 函数原型
+     * @param base 堆栈基址
+     * @param param_count 参数数量
+     * @param return_address 返回地址
+     */
+    void PushFrame(const Proto* proto, Size base, Size param_count, Size return_address = 0);
+    
+    /**
+     * @brief 弹出当前调用帧
+     * @return 弹出的调用帧
+     */
+    CallFrame PopFrame();
+    
+    /**
+     * @brief 获取当前调用帧
+     */
+    CallFrame& GetCurrentFrame();
+    const CallFrame& GetCurrentFrame() const;
+    
+    /**
+     * @brief 获取调用栈深度
+     */
+    Size GetDepth() const { return current_frame_index_ + 1; }
+    
+    /**
+     * @brief 获取最大深度
+     */
+    Size GetMaxDepth() const { return max_depth_; }
+    
+    /**
+     * @brief 检查调用栈是否为空
+     */
+    bool IsEmpty() const { return current_frame_index_ == 0; }
+    
+    /**
+     * @brief 清空调用栈
+     */
+    void Clear();
+    
+    /* ====================================================================== */
+    /* 尾调用优化（T026 特有功能）*/
     /* ====================================================================== */
     
     /**
@@ -318,7 +369,12 @@ private:
     /* 成员变量 */
     /* ====================================================================== */
     
-    // 性能统计
+    // 基础调用栈数据（Lua 5.1.5 风格）
+    std::vector<CallFrame> frames_;         // 调用帧数组
+    Size current_frame_index_;              // 当前帧索引
+    Size max_depth_;                        // 最大深度
+    
+    // T026 性能统计
     CallStackMetrics metrics_;
     
     // 调用模式统计
@@ -343,18 +399,18 @@ private:
 /* ========================================================================== */
 
 /**
- * @brief 创建标准高级调用栈
+ * @brief 创建标准高级调用栈管理器
  */
-std::unique_ptr<AdvancedCallStack> CreateStandardAdvancedCallStack();
+std::unique_ptr<AdvancedCallStackManager> CreateStandardAdvancedCallStack();
 
 /**
- * @brief 创建高性能调用栈（减少统计开销）
+ * @brief 创建高性能调用栈管理器（减少统计开销）
  */
-std::unique_ptr<AdvancedCallStack> CreateHighPerformanceCallStack();
+std::unique_ptr<AdvancedCallStackManager> CreateHighPerformanceCallStack();
 
 /**
- * @brief 创建调试调用栈（最详细的统计和跟踪）
+ * @brief 创建调试调用栈管理器（最详细的统计和跟踪）
  */
-std::unique_ptr<AdvancedCallStack> CreateDebugCallStack();
+std::unique_ptr<AdvancedCallStackManager> CreateDebugCallStack();
 
 } // namespace lua_cpp

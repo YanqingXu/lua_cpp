@@ -16,14 +16,20 @@ namespace lua_cpp {
  * 
  * 集成T026高级调用栈管理功能到现有VM系统
  * 提供向后兼容性并增强功能
+ * 
+ * 设计模式：组合而非继承
+ * - 基础功能：使用 VirtualMachine 的简单 CallFrame 数组
+ * - 高级功能：可选启用 AdvancedCallStackManager（T026）
  */
 class EnhancedVirtualMachine : public VirtualMachine {
 public:
     /**
      * @brief 构造函数
      * @param config VM配置
+     * @param enable_advanced 是否启用 T026 高级功能
      */
-    explicit EnhancedVirtualMachine(const VMConfig& config = VMConfig());
+    explicit EnhancedVirtualMachine(const VMConfig& config = VMConfig(), 
+                                  bool enable_advanced = true);
     
     /**
      * @brief 析构函数
@@ -41,10 +47,19 @@ public:
     /* ====================================================================== */
     
     /**
-     * @brief 获取高级调用栈
+     * @brief 获取高级调用栈管理器（如果已启用）
      */
-    AdvancedCallStack& GetAdvancedCallStack() { return *advanced_call_stack_; }
-    const AdvancedCallStack& GetAdvancedCallStack() const { return *advanced_call_stack_; }
+    AdvancedCallStackManager* GetAdvancedCallStackManager() { 
+        return advanced_call_stack_manager_.get(); 
+    }
+    const AdvancedCallStackManager* GetAdvancedCallStackManager() const { 
+        return advanced_call_stack_manager_.get(); 
+    }
+    
+    /**
+     * @brief 检查是否启用了高级功能
+     */
+    bool IsAdvancedFeaturesEnabled() const { return use_advanced_features_; }
     
     /**
      * @brief 获取Upvalue管理器
@@ -278,8 +293,11 @@ private:
     /* 成员变量 */
     /* ====================================================================== */
     
-    // T026组件
-    std::unique_ptr<AdvancedCallStack> advanced_call_stack_;
+    // T026 高级调用栈管理器（可选，组合而非继承）
+    std::unique_ptr<AdvancedCallStackManager> advanced_call_stack_manager_;
+    bool use_advanced_features_;  // 是否启用高级功能
+    
+    // T026 其他组件
     std::unique_ptr<UpvalueManager> upvalue_manager_;
     std::unique_ptr<CoroutineSupport> coroutine_support_;
     

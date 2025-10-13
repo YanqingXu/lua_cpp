@@ -23,14 +23,20 @@ namespace lua_cpp {
 /* 构造和初始化 */
 /* ========================================================================== */
 
-AdvancedCallStack::AdvancedCallStack(Size max_depth)
-    : CallStack(max_depth)
+AdvancedCallStackManager::AdvancedCallStackManager(Size max_depth)
+    : frames_()
+    , current_frame_index_(0)
+    , max_depth_(max_depth)
     , metrics_()
     , pattern_stats_()
     , call_start_times_()
     , recursion_depths_()
     , call_history_()
     , frame_memory_overhead_(sizeof(CallFrame)) {
+    
+    // 预分配初始调用帧空间（Lua 5.1.5 风格）
+    frames_.reserve(std::min<Size>(8, max_depth));
+    frames_.resize(1, CallFrame(nullptr, 0, 0, 0));  // 基础帧
     
     // 初始化性能指标
     ResetMetrics();
@@ -48,7 +54,7 @@ AdvancedCallStack::AdvancedCallStack(Size max_depth)
 /* 尾调用优化实现 */
 /* ========================================================================== */
 
-bool AdvancedCallStack::CanOptimizeTailCall(const Proto* proto, Size param_count) {
+bool AdvancedCallStackManager::CanOptimizeTailCall(const Proto* proto, Size param_count) {
     metrics_.tail_calls_attempted++;
     
     // 基础检查
@@ -84,7 +90,7 @@ bool AdvancedCallStack::CanOptimizeTailCall(const Proto* proto, Size param_count
     return true;
 }
 
-void AdvancedCallStack::ExecuteTailCallOptimization(const Proto* proto, Size param_count,
+void AdvancedCallStackManager::ExecuteTailCallOptimization(const Proto* proto, Size param_count,
                                                   const std::vector<LuaValue>& args) {
     if (!CanOptimizeTailCall(proto, param_count)) {
         throw RuntimeError("Cannot execute tail call optimization");
@@ -134,7 +140,7 @@ void AdvancedCallStack::ExecuteTailCallOptimization(const Proto* proto, Size par
     }
 }
 
-void AdvancedCallStack::PrepareTailCall(RegisterIndex func_reg, Size param_count) {
+void AdvancedCallStackManager::PrepareTailCall(RegisterIndex func_reg, Size param_count) {
     if (IsEmpty()) {
         throw RuntimeError("Cannot prepare tail call: empty call stack");
     }
@@ -158,7 +164,7 @@ void AdvancedCallStack::PrepareTailCall(RegisterIndex func_reg, Size param_count
     // 这里可以添加预处理逻辑，如参数验证、内存预分配等
 }
 
-bool AdvancedCallStack::IsRecursiveCall(const Proto* proto) const {
+bool AdvancedCallStackManager::IsRecursiveCall(const Proto* proto) const {
     if (!proto || IsEmpty()) {
         return false;
     }
@@ -174,7 +180,7 @@ bool AdvancedCallStack::IsRecursiveCall(const Proto* proto) const {
     return false;
 }
 
-Size AdvancedCallStack::GetRecursionDepth(const Proto* proto) const {
+Size AdvancedCallStackManager::GetRecursionDepth(const Proto* proto) const {
     if (!proto) {
         return 0;
     }
@@ -194,7 +200,7 @@ Size AdvancedCallStack::GetRecursionDepth(const Proto* proto) const {
 /* 性能监控实现 */
 /* ========================================================================== */
 
-void AdvancedCallStack::ResetMetrics() {
+void AdvancedCallStackManager::ResetMetrics() {
     metrics_ = CallStackMetrics{};
     metrics_.measurement_start = std::chrono::steady_clock::now();
     
@@ -209,7 +215,7 @@ void AdvancedCallStack::ResetMetrics() {
     recursion_depths_.clear();
 }
 
-void AdvancedCallStack::UpdateCallTiming(std::chrono::steady_clock::time_point call_start_time) {
+void AdvancedCallStackManager::UpdateCallTiming(std::chrono::steady_clock::time_point call_start_time) {
     auto call_end_time = std::chrono::steady_clock::now();
     auto call_duration = std::chrono::duration<double, std::milli>(
         call_end_time - call_start_time).count();
@@ -224,7 +230,7 @@ void AdvancedCallStack::UpdateCallTiming(std::chrono::steady_clock::time_point c
     }
 }
 
-void AdvancedCallStack::UpdateMemoryUsage(Size current_usage) {
+void AdvancedCallStackManager::UpdateMemoryUsage(Size current_usage) {
     metrics_.current_memory_usage = current_usage;
     metrics_.peak_memory_usage = std::max(metrics_.peak_memory_usage, current_usage);
 }
@@ -233,7 +239,7 @@ void AdvancedCallStack::UpdateMemoryUsage(Size current_usage) {
 /* 调用模式分析 */
 /* ========================================================================== */
 
-AdvancedCallStack::CallPattern AdvancedCallStack::AnalyzeCallPattern() const {
+AdvancedCallStackManager::CallPattern AdvancedCallStackManager::AnalyzeCallPattern() const {
     if (IsEmpty() || call_history_.empty()) {
         return CallPattern::UNKNOWN;
     }
@@ -307,11 +313,11 @@ AdvancedCallStack::CallPattern AdvancedCallStack::AnalyzeCallPattern() const {
     return CallPattern::NORMAL;
 }
 
-std::map<AdvancedCallStack::CallPattern, Size> AdvancedCallStack::GetCallPatternStats() const {
+std::map<AdvancedCallStackManager::CallPattern, Size> AdvancedCallStackManager::GetCallPatternStats() const {
     return pattern_stats_;
 }
 
-std::string AdvancedCallStack::GetOptimizationSuggestion(CallPattern pattern) const {
+std::string AdvancedCallStackManager::GetOptimizationSuggestion(CallPattern pattern) const {
     switch (pattern) {
         case CallPattern::TAIL_RECURSIVE:
             return "尾递归检测到。建议确保使用尾调用优化以避免栈溢出。当前优化率: " +
@@ -340,7 +346,7 @@ std::string AdvancedCallStack::GetOptimizationSuggestion(CallPattern pattern) co
 /* 调试增强实现 */
 /* ========================================================================== */
 
-std::string AdvancedCallStack::GetDetailedStackTrace(bool include_registers,
+std::string AdvancedCallStackManager::GetDetailedStackTrace(bool include_registers,
                                                    bool include_locals) const {
     if (IsEmpty()) {
         return "Empty call stack";
@@ -378,7 +384,7 @@ std::string AdvancedCallStack::GetDetailedStackTrace(bool include_registers,
     return ss.str();
 }
 
-std::vector<std::string> AdvancedCallStack::GetFunctionCallChain() const {
+std::vector<std::string> AdvancedCallStackManager::GetFunctionCallChain() const {
     std::vector<std::string> chain;
     
     for (Size i = 0; i < GetDepth(); ++i) {
@@ -395,7 +401,7 @@ std::vector<std::string> AdvancedCallStack::GetFunctionCallChain() const {
     return chain;
 }
 
-std::shared_ptr<AdvancedCallStack::CallGraphNode> AdvancedCallStack::BuildCallGraph() const {
+std::shared_ptr<AdvancedCallStackManager::CallGraphNode> AdvancedCallStackManager::BuildCallGraph() const {
     // 构建调用图的简化实现
     auto root = std::make_shared<CallGraphNode>();
     root->function_name = "<root>";
@@ -421,7 +427,7 @@ std::shared_ptr<AdvancedCallStack::CallGraphNode> AdvancedCallStack::BuildCallGr
     return root;
 }
 
-std::string AdvancedCallStack::ExportCallGraphToDot() const {
+std::string AdvancedCallStackManager::ExportCallGraphToDot() const {
     std::stringstream ss;
     ss << "digraph CallGraph {\n";
     ss << "  rankdir=TB;\n";
@@ -449,17 +455,29 @@ std::string AdvancedCallStack::ExportCallGraphToDot() const {
 }
 
 /* ========================================================================== */
-/* 重写基类方法 */
+/* 基础调用栈方法实现（独立实现，不依赖继承）*/
 /* ========================================================================== */
 
-void AdvancedCallStack::PushFrame(const Proto* proto, Size base, Size param_count, 
+void AdvancedCallStackManager::PushFrame(const Proto* proto, Size base, Size param_count, 
                                  Size return_address) {
-    // 记录调用开始
+    // 检查深度
+    if (current_frame_index_ + 1 >= max_depth_) {
+        throw CallStackOverflowError("Call stack overflow in advanced manager");
+    }
+    
+    // 如果需要，扩容数组
+    if (current_frame_index_ + 1 >= frames_.size()) {
+        Size new_size = frames_.empty() ? 8 : frames_.size() * 2;
+        new_size = std::min(new_size, max_depth_);
+        frames_.resize(new_size, CallFrame(nullptr, 0, 0, 0));
+    }
+    
+    // 记录调用开始（T026 统计）
     RecordCallStart(proto);
     
-    // 更新统计
+    // 更新 T026 统计
     metrics_.total_function_calls++;
-    metrics_.current_depth = GetDepth() + 1;
+    metrics_.current_depth = current_frame_index_ + 2;  // +2 因为马上要递增
     metrics_.max_depth_reached = std::max(metrics_.max_depth_reached, metrics_.current_depth);
     
     // 计算平均调用深度
@@ -495,25 +513,26 @@ void AdvancedCallStack::PushFrame(const Proto* proto, Size base, Size param_coun
     CallPattern pattern = AnalyzeCallPattern();
     UpdateCallPatternStats(pattern);
     
-    // 调用基类方法
-    CallStack::PushFrame(proto, base, param_count, return_address);
+    // 递增索引并初始化帧（Lua 5.1.5 风格）
+    current_frame_index_++;
+    frames_[current_frame_index_] = CallFrame(proto, base, param_count, return_address);
 }
 
-CallFrame AdvancedCallStack::PopFrame() {
-    if (IsEmpty()) {
+CallFrame AdvancedCallStackManager::PopFrame() {
+    if (current_frame_index_ == 0) {
         throw CallFrameError("Cannot pop from empty call stack");
     }
     
     // 获取当前帧信息
-    const CallFrame& current_frame = GetCurrentFrame();
+    const CallFrame& current_frame = frames_[current_frame_index_];
     const Proto* proto = current_frame.GetProto();
     
-    // 记录调用结束
+    // 记录调用结束（T026 统计）
     RecordCallEnd(proto);
     
-    // 更新统计
+    // 更新 T026 统计
     metrics_.total_function_returns++;
-    metrics_.current_depth = GetDepth() - 1;
+    metrics_.current_depth = current_frame_index_;  // 即将递减后的深度
     
     // 更新递归深度
     if (proto && recursion_depths_.count(proto)) {
@@ -527,28 +546,57 @@ CallFrame AdvancedCallStack::PopFrame() {
     Size new_memory = metrics_.current_memory_usage - frame_memory_overhead_;
     UpdateMemoryUsage(new_memory);
     
-    // 调用基类方法
-    return CallStack::PopFrame();
+    // 简单递减并返回帧（Lua 5.1.5 风格）
+    return frames_[current_frame_index_--];
 }
 
-void AdvancedCallStack::Clear() {
+CallFrame& AdvancedCallStackManager::GetCurrentFrame() {
+    if (current_frame_index_ >= frames_.size()) {
+        throw CallFrameError("No active call frame");
+    }
+    return frames_[current_frame_index_];
+}
+
+const CallFrame& AdvancedCallStackManager::GetCurrentFrame() const {
+    if (current_frame_index_ >= frames_.size()) {
+        throw CallFrameError("No active call frame");
+    }
+    return frames_[current_frame_index_];
+}
+
+void AdvancedCallStackManager::Clear() {
     // 重置所有统计
     ResetMetrics();
     
-    // 调用基类方法
-    CallStack::Clear();
+    // 重置调用栈（保持一个基础帧）
+    current_frame_index_ = 0;
+    frames_.clear();
+    frames_.resize(1, CallFrame(nullptr, 0, 0, 0));
+    
+    // 清空历史和递归跟踪
+    call_history_.clear();
+    recursion_depths_.clear();
+    call_start_times_.clear();
 }
 
 /* ========================================================================== */
 /* 验证和诊断 */
 /* ========================================================================== */
 
-AdvancedCallStack::ValidationResult AdvancedCallStack::ValidateIntegrityAdvanced() const {
+AdvancedCallStackManager::ValidationResult AdvancedCallStackManager::ValidateIntegrityAdvanced() const {
     ValidationResult result;
     result.is_valid = true;
     
     // 基础完整性检查
-    bool basic_valid = ValidateIntegrity();
+    if (current_frame_index_ >= frames_.size()) {
+        result.is_valid = false;
+        result.issues.push_back("Current frame index out of bounds");
+    }
+    
+    if (frames_.empty()) {
+        result.is_valid = false;
+        result.issues.push_back("Frame array is empty");
+    }
     if (!basic_valid) {
         result.is_valid = false;
         result.issues.push_back("基础调用栈完整性检查失败");
@@ -602,7 +650,7 @@ AdvancedCallStack::ValidationResult AdvancedCallStack::ValidateIntegrityAdvanced
     return result;
 }
 
-std::string AdvancedCallStack::DiagnoseCallStackIssues() const {
+std::string AdvancedCallStackManager::DiagnoseCallStackIssues() const {
     auto validation = ValidateIntegrityAdvanced();
     
     std::stringstream ss;
@@ -652,7 +700,7 @@ std::string AdvancedCallStack::DiagnoseCallStackIssues() const {
     return ss.str();
 }
 
-std::string AdvancedCallStack::GeneratePerformanceReport() const {
+std::string AdvancedCallStackManager::GeneratePerformanceReport() const {
     std::stringstream ss;
     ss << std::fixed << std::setprecision(2);
     
@@ -726,11 +774,11 @@ std::string AdvancedCallStack::GeneratePerformanceReport() const {
 /* 私有方法 */
 /* ========================================================================== */
 
-void AdvancedCallStack::UpdateCallPatternStats(CallPattern pattern) {
+void AdvancedCallStackManager::UpdateCallPatternStats(CallPattern pattern) {
     pattern_stats_[pattern]++;
 }
 
-bool AdvancedCallStack::CheckTailCallPreconditions(const Proto* proto) const {
+bool AdvancedCallStackManager::CheckTailCallPreconditions(const Proto* proto) const {
     // 检查函数原型有效性
     if (!proto) {
         return false;
@@ -751,17 +799,17 @@ bool AdvancedCallStack::CheckTailCallPreconditions(const Proto* proto) const {
     return true;
 }
 
-Size AdvancedCallStack::CalculateMemorySavings(Size avoided_frames) const {
+Size AdvancedCallStackManager::CalculateMemorySavings(Size avoided_frames) const {
     return avoided_frames * frame_memory_overhead_;
 }
 
-void AdvancedCallStack::RecordCallStart(const Proto* proto) {
+void AdvancedCallStackManager::RecordCallStart(const Proto* proto) {
     if (proto) {
         call_start_times_[proto] = std::chrono::steady_clock::now();
     }
 }
 
-void AdvancedCallStack::RecordCallEnd(const Proto* proto) {
+void AdvancedCallStackManager::RecordCallEnd(const Proto* proto) {
     if (proto && call_start_times_.count(proto)) {
         auto start_time = call_start_times_[proto];
         UpdateCallTiming(start_time);
@@ -773,20 +821,20 @@ void AdvancedCallStack::RecordCallEnd(const Proto* proto) {
 /* 工厂函数 */
 /* ========================================================================== */
 
-std::unique_ptr<AdvancedCallStack> CreateStandardAdvancedCallStack() {
-    return std::make_unique<AdvancedCallStack>(VM_MAX_CALL_STACK_DEPTH);
+std::unique_ptr<AdvancedCallStackManager> CreateStandardAdvancedCallStack() {
+    return std::make_unique<AdvancedCallStackManager>(VM_MAX_CALL_STACK_DEPTH);
 }
 
-std::unique_ptr<AdvancedCallStack> CreateHighPerformanceCallStack() {
+std::unique_ptr<AdvancedCallStackManager> CreateHighPerformanceCallStack() {
     // 高性能版本，减少统计开销
-    auto stack = std::make_unique<AdvancedCallStack>(VM_MAX_CALL_STACK_DEPTH * 2);
+    auto stack = std::make_unique<AdvancedCallStackManager>(VM_MAX_CALL_STACK_DEPTH * 2);
     stack->ResetMetrics(); // 确保统计从零开始
     return stack;
 }
 
-std::unique_ptr<AdvancedCallStack> CreateDebugCallStack() {
+std::unique_ptr<AdvancedCallStackManager> CreateDebugCallStack() {
     // 调试版本，最详细的统计和跟踪
-    auto stack = std::make_unique<AdvancedCallStack>(VM_MAX_CALL_STACK_DEPTH / 2);
+    auto stack = std::make_unique<AdvancedCallStackManager>(VM_MAX_CALL_STACK_DEPTH / 2);
     stack->ResetMetrics();
     return stack;
 }
