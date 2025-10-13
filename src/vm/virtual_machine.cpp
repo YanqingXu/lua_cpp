@@ -29,14 +29,18 @@ namespace lua_cpp {
 VirtualMachine::VirtualMachine(const VMConfig& config)
     : config_(config)
     , stack_(std::make_unique<LuaStack>(config.initial_stack_size))
-    , call_stack_(std::make_unique<CallStack>(config.max_call_depth))
+    , call_frames_()
+    , current_frame_index_(0)
+    , max_call_depth_(config.max_call_depth)
     , execution_state_(ExecutionState::Ready)
-    , instruction_pointer_(0)
-    , current_proto_(nullptr)
     , global_table_(std::make_shared<LuaTable>())
     , debug_hook_(nullptr)
     , statistics_()
     , instruction_count_(0) {
+    
+    // 预分配初始调用帧空间（Lua 5.1.5 风格）
+    call_frames_.reserve(std::min<Size>(8, config.max_call_depth));
+    call_frames_.resize(1, CallFrame(nullptr, 0, 0, 0));  // 基础帧（类似 base_ci）
     
     // 初始化统计信息
     statistics_ = ExecutionStatistics{};
@@ -56,9 +60,6 @@ std::vector<LuaValue> VirtualMachine::ExecuteProgram(const Proto* proto,
     
     // 重置虚拟机状态
     Reset();
-    
-    // 设置主函数
-    current_proto_ = proto;
     
     // 创建主函数调用帧
     PushCallFrame(proto, 0, args.size(), 0);
@@ -112,7 +113,7 @@ void VirtualMachine::ExecuteInstruction(Instruction instruction) {
     }
     
     // 检查调用栈完整性
-    if (call_stack_->IsEmpty()) {
+    if (IsCallStackEmpty()) {
         throw VMExecutionError("No active call frame");
     }
     
@@ -361,9 +362,12 @@ void VirtualMachine::Suspend() {
 
 void VirtualMachine::Reset() {
     execution_state_ = ExecutionState::Ready;
-    instruction_pointer_ = 0;
-    current_proto_ = nullptr;
-    call_stack_->Clear();
+    
+    // 重置调用栈（保持一个基础帧）
+    current_frame_index_ = 0;
+    call_frames_.clear();
+    call_frames_.resize(1, CallFrame(nullptr, 0, 0, 0));
+    
     SetStackTop(0);
     instruction_count_ = 0;
     
@@ -376,19 +380,31 @@ void VirtualMachine::Reset() {
 /* ========================================================================== */
 
 Size VirtualMachine::GetInstructionPointer() const {
-    return instruction_pointer_;
+    if (IsCallStackEmpty()) {
+        return 0;
+    }
+    return GetCurrentCallFrame().GetInstructionPointer();
 }
 
 void VirtualMachine::SetInstructionPointer(Size ip) {
-    instruction_pointer_ = ip;
+    if (!IsCallStackEmpty()) {
+        GetCurrentCallFrame().SetInstructionPointer(ip);
+    }
 }
 
 bool VirtualMachine::HasMoreInstructions() const {
-    if (!current_proto_ || call_stack_->IsEmpty()) {
+    if (IsCallStackEmpty()) {
         return false;
     }
     
-    return instruction_pointer_ < current_proto_->GetCodeSize();
+    const CallFrame& frame = GetCurrentCallFrame();
+    const Proto* proto = frame.GetProto();
+    
+    if (!proto) {
+        return false;
+    }
+    
+    return frame.GetInstructionPointer() < proto->GetCodeSize();
 }
 
 Instruction VirtualMachine::GetNextInstruction() const {
@@ -396,16 +412,20 @@ Instruction VirtualMachine::GetNextInstruction() const {
         throw VMExecutionError("No more instructions to execute");
     }
     
-    return current_proto_->GetInstruction(instruction_pointer_);
+    const CallFrame& frame = GetCurrentCallFrame();
+    auto inst = frame.GetCurrentInstruction();
+    if (!inst.has_value()) {
+        throw VMExecutionError("No current instruction available");
+    }
+    return inst.value();
 }
 
 int VirtualMachine::GetCurrentLine() const {
-    if (!current_proto_) {
+    if (IsCallStackEmpty()) {
         return 0;
     }
     
-    // 简化版本：返回指令指针作为行号
-    return static_cast<int>(instruction_pointer_) + 1;
+    return GetCurrentCallFrame().GetCurrentLine();
 }
 
 /* ========================================================================== */
@@ -457,10 +477,11 @@ LuaValue VirtualMachine::GetRK(int rk) const {
     if (IsConstant(rk)) {
         // 常量
         int const_index = RKToConstantIndex(rk);
-        if (!current_proto_ || const_index >= current_proto_->GetConstantCount()) {
+        const Proto* proto = GetCurrentCallFrame().GetProto();
+        if (!proto || const_index >= proto->GetConstantCount()) {
             throw VMExecutionError("Invalid constant index");
         }
-        return current_proto_->GetConstant(const_index);
+        return proto->GetConstant(const_index);
     } else {
         // 寄存器
         return GetRegister(static_cast<RegisterIndex>(rk));
@@ -468,46 +489,30 @@ LuaValue VirtualMachine::GetRK(int rk) const {
 }
 
 Size VirtualMachine::GetCurrentBase() const {
-    if (call_stack_->IsEmpty()) {
+    if (IsCallStackEmpty()) {
         return 0;
     }
     
-    return call_stack_->GetCurrentFrame().GetBase();
+    return GetCurrentCallFrame().GetBase();
 }
 
 /* ========================================================================== */
 /* 函数调用管理 */
 /* ========================================================================== */
 
-void VirtualMachine::PushCallFrame(const Proto* proto, Size base, Size param_count) {
-    // 创建新的调用帧
-    call_stack_->PushFrame(proto, base, param_count, instruction_pointer_ + 1);
-    
-    // 更新当前函数和指令指针
-    current_proto_ = proto;
-    instruction_pointer_ = 0;
-    
-    // 更新统计信息
-    statistics_.function_calls++;
-    statistics_.peak_call_depth = std::max(statistics_.peak_call_depth, call_stack_->GetDepth());
-}
-
-void VirtualMachine::PopCallFrame() {
+void VirtualMachine::PopCallFrameInternal() {
     // 获取返回地址
-    Size return_address = call_stack_->GetCurrentFrame().GetReturnAddress();
+    Size return_address = GetCurrentCallFrame().GetReturnAddress();
     
-    // 弹出调用帧
-    call_stack_->PopFrame();
+    // 弹出调用帧（简单递减索引）
+    PopCallFrame();
     
-    if (call_stack_->IsEmpty()) {
+    if (IsCallStackEmpty()) {
         // 主函数返回，程序结束
         execution_state_ = ExecutionState::Finished;
-        current_proto_ = nullptr;
-        instruction_pointer_ = 0;
     } else {
         // 恢复上一层函数的执行上下文
-        current_proto_ = call_stack_->GetCurrentFrame().GetProto();
-        instruction_pointer_ = return_address;
+        // 返回地址已包含在上一个CallFrame中
     }
 }
 
@@ -554,31 +559,54 @@ Size VirtualMachine::GetMemoryUsage() const {
 
 DebugInfo VirtualMachine::GetCurrentDebugInfo() const {
     DebugInfo info;
-    info.instruction_pointer = instruction_pointer_;
-    info.current_function = current_proto_;
     
-    if (!call_stack_->IsEmpty()) {
-        Instruction inst = GetNextInstruction();
-        info.current_opcode = GetOpCode(inst);
-        info.current_instruction = inst;
+    if (!IsCallStackEmpty()) {
+        const CallFrame& frame = GetCurrentCallFrame();
+        info.instruction_pointer = frame.GetInstructionPointer();
+        info.current_function = frame.GetProto();
+        
+        auto inst = frame.GetCurrentInstruction();
+        if (inst.has_value()) {
+            info.current_opcode = GetOpCode(inst.value());
+            info.current_instruction = inst.value();
+        } else {
+            info.current_opcode = OpCode::MOVE; // 默认值
+            info.current_instruction = 0;
+        }
+        
+        info.current_line = frame.GetCurrentLine();
+        info.source_name = frame.GetSourceName();
+        info.function_name = frame.GetFunctionName();
     } else {
-        info.current_opcode = OpCode::MOVE; // 默认值
+        info.instruction_pointer = 0;
+        info.current_function = nullptr;
+        info.current_opcode = OpCode::MOVE;
         info.current_instruction = 0;
+        info.current_line = 0;
+        info.source_name = "";
+        info.function_name = "";
     }
-    
-    info.current_line = GetCurrentLine();
-    info.source_name = current_proto_ ? current_proto_->GetSourceName() : "";
-    info.function_name = ""; // 暂时为空
     
     return info;
 }
 
 std::string VirtualMachine::GetStackTrace() const {
-    if (call_stack_->IsEmpty()) {
+    if (IsCallStackEmpty()) {
         return "Empty call stack";
     }
     
-    return call_stack_->FormatStackTrace();
+    // 生成简化的栈跟踪
+    std::stringstream ss;
+    ss << "Stack trace (" << GetCallDepth() << " frames):\n";
+    
+    for (Size i = 0; i < GetCallDepth(); ++i) {
+        const CallFrame& frame = call_frames_[i];
+        ss << "  [" << i << "] " << frame.GetFunctionName() 
+           << " at " << frame.GetSourceName() 
+           << ":" << frame.GetCurrentLine() << "\n";
+    }
+    
+    return ss.str();
 }
 
 /* ========================================================================== */

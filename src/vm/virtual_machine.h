@@ -316,22 +316,73 @@ public:
     /* ====================================================================== */
     
     /**
-     * @brief 推入调用帧
+     * @brief 推入调用帧（Lua 5.1.5 风格）
+     * 
+     * 类似 Lua 的 incr_ci()
      */
     void PushCallFrame(const Proto* proto, Size base, Size param_count, Size return_address = 0) {
-        call_stack_->PushFrame(proto, base, param_count, return_address);
+        // 检查深度
+        if (current_frame_index_ + 1 >= max_call_depth_) {
+            throw CallStackOverflowError("Call stack overflow");
+        }
+        
+        // 如果需要，扩容数组（类似 luaD_reallocCI）
+        if (current_frame_index_ + 1 >= call_frames_.size()) {
+            Size new_size = call_frames_.empty() ? 8 : call_frames_.size() * 2;
+            new_size = std::min(new_size, max_call_depth_);
+            call_frames_.resize(new_size, CallFrame(nullptr, 0, 0, 0));
+        }
+        
+        // 递增索引并初始化帧
+        current_frame_index_++;
+        call_frames_[current_frame_index_] = CallFrame(proto, base, param_count, return_address);
+        
+        // 更新统计
+        statistics_.peak_call_depth = std::max(statistics_.peak_call_depth, current_frame_index_ + 1);
+    }
+    
+    /**
+     * @brief 弹出调用帧（Lua 5.1.5 风格）
+     * 
+     * 类似 Lua 的 popi(L, 1)
+     */
+    CallFrame& PopCallFrame() {
+        if (current_frame_index_ == 0) {
+            throw CallFrameError("Cannot pop from empty call stack");
+        }
+        return call_frames_[current_frame_index_--];
     }
     
     /**
      * @brief 获取当前调用帧
+     * 
+     * 类似 Lua 的 L->ci（当前调用信息）
      */
-    CallFrame& GetCurrentCallFrame() { return call_stack_->GetCurrentFrame(); }
-    const CallFrame& GetCurrentCallFrame() const { return call_stack_->GetCurrentFrame(); }
+    CallFrame& GetCurrentCallFrame() { 
+        if (current_frame_index_ >= call_frames_.size()) {
+            throw CallFrameError("No active call frame");
+        }
+        return call_frames_[current_frame_index_]; 
+    }
+    
+    const CallFrame& GetCurrentCallFrame() const { 
+        if (current_frame_index_ >= call_frames_.size()) {
+            throw CallFrameError("No active call frame");
+        }
+        return call_frames_[current_frame_index_]; 
+    }
     
     /**
-     * @brief 获取调用帧数量
+     * @brief 获取调用帧数量（深度）
+     * 
+     * 类似 Lua 的 ci_depth(L) = (L->ci - L->base_ci)
      */
-    Size GetCallFrameCount() const { return call_stack_->GetDepth(); }
+    Size GetCallDepth() const { return current_frame_index_ + 1; }
+    
+    /**
+     * @brief 检查调用栈是否为空
+     */
+    bool IsCallStackEmpty() const { return current_frame_index_ == 0; }
     
     /* ====================================================================== */
     /* 配置访问 */
@@ -490,14 +541,9 @@ private:
     Size GetCurrentBase() const;
     
     /**
-     * @brief 推入调用帧
+     * @brief 弹出调用帧（内部使用）
      */
-    void PushCallFrame(const Proto* proto, Size base, Size param_count);
-    
-    /**
-     * @brief 弹出调用帧
-     */
-    void PopCallFrame();
+    void PopCallFrameInternal();
     
     /* ====================================================================== */
     /* 指令解码方法 */
@@ -519,12 +565,15 @@ private:
     
     // 核心组件
     std::unique_ptr<LuaStack> stack_;           // 值堆栈
-    std::vector<CallFrame> call_stack_;         // 调用栈
+    
+    // 调用栈管理（Lua 5.1.5 风格）
+    // 类似 Lua 中的 lua_State::ci, base_ci, end_ci
+    std::vector<CallFrame> call_frames_;        // 调用帧数组
+    Size current_frame_index_;                  // 当前帧索引（类似 ci - base_ci）
+    Size max_call_depth_;                       // 最大调用深度
     
     // 执行状态
     ExecutionState execution_state_;            // 执行状态
-    Size instruction_pointer_;                  // 指令指针
-    const Proto* current_proto_;                // 当前函数原型
     
     // 全局状态
     std::shared_ptr<LuaTable> global_table_;    // 全局变量表
